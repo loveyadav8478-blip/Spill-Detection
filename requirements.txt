@@ -1,0 +1,11 @@
+rasterio
+numpy
+scipy
+
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+shapely
+opencv-python-headless
+Pillowj
