@@ -3,10 +3,16 @@ import json
 import math
 from pathlib import Path
 
-
+"""
+Rewrite run_hindcast() to: (a) add a forward pass,
+(b) fix the origin logic to be explicit about being a lookback-boundary estimate not a "confidence-based" estimate, 
+(c) emit real timestamps, 
+(d) match your locked JSON schema field names,
+(e) be a plain function callable in-process, not a CLI script.
+"""
 EARTH_RADIUS_KM = 6371.0
 
-
+#reuse
 def destination_point(lat, lon, distance_km, bearing_deg):
     """
     Move a point along the Earth's surface.
@@ -46,7 +52,7 @@ def destination_point(lat, lon, distance_km, bearing_deg):
         math.degrees(lon2)
     )
 
-
+#reuse
 def vector_components(speed_kmh, direction_deg):
     """
     Convert speed + bearing into north/east components.
@@ -59,7 +65,7 @@ def vector_components(speed_kmh, direction_deg):
 
     return north, east
 
-
+#reuse
 def combine_environment(environment):
     """
     Combine wind and current into an approximate surface drift vector.
