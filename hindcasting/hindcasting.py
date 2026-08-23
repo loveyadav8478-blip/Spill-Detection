@@ -1,9 +1,11 @@
 """
 Hindcasting / drift module.
 
-Pay attention to the data ingestion whether to get it from and api or hard code it etc
-Fetching environmental data (current + wind) and running the vector-based backward/forward drift simulation.
-- Detection only ever hands over spill_id + observed_position + observation_time.
+Owns everything the PS does NOT provide for this stage: fetching
+environmental data (current + wind) and running the vector-based
+backward/forward drift simulation. Detection stays completely free of
+this - it only ever hands over spill_id + observed_position +
+observation_time (see HindcastInput in schema.py).
 
 Flow (locked):
   1. Ingest HindcastInput from detection
@@ -28,6 +30,7 @@ import math
 from datetime import datetime, timedelta
 
 from ..data.schemas import (
+    EnvironmentSource,
     EnvironmentVector,
     HindcastInput,
     HindcastModelParams,
@@ -38,35 +41,81 @@ from ..data.schemas import (
 
 EARTH_RADIUS_KM = 6371.0
 
+# Single switch point - change this one line to flip every call in the
+# module from static sample data to live APIs once those are wired up.
+# Can also be overridden per-call via the `source` parameter below
+# without touching this default (useful for testing both paths).
+DEFAULT_ENV_SOURCE = EnvironmentSource.static_sample
+
 
 # ---------------------------------------------------------------------------
-# Environmental data fetch - static sample lookups for the prototype.
-# Swap these two functions for real API calls (HYCOM/OSCAR for current,
-# GFS/ERA5 for wind) post-hackathon. Nothing else in this file needs to
-# change when that happens - they're the only functions that touch an
-# external data source.
+# Environmental data fetch - dispatches to a static sample or a live API
+# based on `source`. Only the two `_live_*` functions need real
+# i mplementations later (HYCOM/OSCAR for current, GFS/ERA5 for wind) -
+# fetch_current/fetch_wind themselves, and everything that calls them
+# (run_hindcast), never need to change.
 # ---------------------------------------------------------------------------
 
-def fetch_current(position: LatLon, time: datetime) -> EnvironmentVector:
-    """Static sample current vector for the prototype."""
+def _static_current(position: LatLon, time: datetime) -> EnvironmentVector:
     return EnvironmentVector(
         speed_kmh=1.4,
         direction_deg=210.0,
-        source="static_sample",
+        source=EnvironmentSource.static_sample,
         data_timestamp=time,
     )
 
 
-def fetch_wind(position: LatLon, time: datetime) -> EnvironmentVector:
-    """Static sample wind vector for the prototype.
-    #imp -> for weather apis check the vector formatting
-    """
+def _live_current(position: LatLon, time: datetime) -> EnvironmentVector:
+    # TODO: call real current API (HYCOM/OSCAR), map its response fields
+    # onto EnvironmentVector(speed_kmh=..., direction_deg=..., ...).
+    # Check the target API's units/bearing convention before wiring this -
+    # see the note on _live_wind below, same caution applies here.
+    raise NotImplementedError("Live current API not wired up yet")
+
+
+def fetch_current(
+    position: LatLon,
+    time: datetime,
+    source: EnvironmentSource = DEFAULT_ENV_SOURCE,
+) -> EnvironmentVector:
+    if source == EnvironmentSource.static_sample:
+        return _static_current(position, time)
+    if source == EnvironmentSource.live_api:
+        return _live_current(position, time)
+    raise ValueError(f"Unknown environment source: {source}")
+
+
+def _static_wind(position: LatLon, time: datetime) -> EnvironmentVector:
     return EnvironmentVector(
         speed_kmh=22.3,
         direction_deg=195.0,
-        source="static_sample",
+        source=EnvironmentSource.static_sample,
         data_timestamp=time,
     )
+
+
+def _live_wind(position: LatLon, time: datetime) -> EnvironmentVector:
+    # TODO: call real wind API (GFS/ERA5), map its response fields onto
+    # EnvironmentVector(speed_kmh=..., direction_deg=..., ...).
+    # #imp -> check the API's speed unit (often m/s, this schema uses
+    # km/h - convert) AND its bearing convention (meteorological wind
+    # direction is usually reported as "blowing FROM", but this module
+    # treats direction_deg as "blowing TOWARD" throughout - flip 180deg
+    # on ingest if the source uses the "from" convention, or drift will
+    # be computed backward).
+    raise NotImplementedError("Live wind API not wired up yet")
+
+
+def fetch_wind(
+    position: LatLon,
+    time: datetime,
+    source: EnvironmentSource = DEFAULT_ENV_SOURCE,
+) -> EnvironmentVector:
+    if source == EnvironmentSource.static_sample:
+        return _static_wind(position, time)
+    if source == EnvironmentSource.live_api:
+        return _live_wind(position, time)
+    raise ValueError(f"Unknown environment source: {source}")
 
 
 # ---------------------------------------------------------------------------
@@ -168,18 +217,25 @@ def _walk_path(
 # Orchestrator - this is the function the API layer calls
 # ---------------------------------------------------------------------------
 
-def run_hindcast(hindcast_input: HindcastInput) -> HindcastOutput:
+def run_hindcast(
+    hindcast_input: HindcastInput,
+    env_source: EnvironmentSource = DEFAULT_ENV_SOURCE,
+) -> HindcastOutput:
     """
     Full hindcast pipeline for one spill: fetch env data, load fixed
     model params, run backward + forward vector walk, return the
     complete HindcastOutput matching the locked schema.
+
+    env_source: EnvironmentSource.static_sample (default) or
+    EnvironmentSource.live_api - overrides DEFAULT_ENV_SOURCE for this
+    call only, without changing the module-level default.
     """
     position = hindcast_input.observed_position
     obs_time = hindcast_input.observation_time
 
     # Step 2: fetch env factors
-    current = fetch_current(position, obs_time)
-    wind = fetch_wind(position, obs_time)
+    current = fetch_current(position, obs_time, source=env_source)
+    wind = fetch_wind(position, obs_time, source=env_source)
 
     # Step 3: load fixed model params (not calculated per-request)
     params = HindcastModelParams()
