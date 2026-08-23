@@ -8,3 +8,4 @@ python-multipart
 shapely
 opencv-python-headless
 Pillow
+pandas

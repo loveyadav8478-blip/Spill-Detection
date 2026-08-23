@@ -15,13 +15,15 @@ import io
 import math
 from datetime import datetime, timedelta
 
+from ais_analysis.pipeline import run_ais_pipeline
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, Form
 from PIL import Image
 from shapely.geometry import Point, LineString
 
-from schema import (
+from data.schemas import (
     DetectionOutput,
     GeoJSONPolygon,
     HindcastInput,
@@ -376,3 +378,18 @@ async def process_spill(
 @app.get("/")
 async def health():
     return {"status": "ok"}
+
+@app.get("/ais/test-pipeline")
+async def test_ais_pipeline():
+
+    result = run_ais_pipeline(
+        ais_file_path="data/ais/ais_dataset.csv",
+        spill_timestamp="2020-03-06 23:00:00",
+        spill_lat=28.88515,
+        spill_lon=-89.022008,
+        duration_minutes=60,
+        radius_km=34,
+        top_n=4
+    )
+
+    return result.to_dict(orient="records")
