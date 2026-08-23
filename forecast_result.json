@@ -1,0 +1,48 @@
+{
+  "currentLocation": {
+    "latitude": 28.885015,
+    "longitude": -89.022008
+  },
+  "environment": {
+    "date": "2020-03-07",
+    "source": "prototype_demo",
+    "wind": {
+      "speedKmh": 14.0,
+      "directionDeg": 45.0
+    },
+    "current": {
+      "speedMs": 0.8,
+      "directionDeg": 90.0
+    }
+  },
+  "driftVector": {
+    "northKmh": 0.29698484809835013,
+    "eastKmh": 3.1769848480983502,
+    "speedKmh": 3.1908357408438466,
+    "directionDeg": 84.65950497712987
+  },
+  "forecast": [
+    {
+      "hoursAhead": 6,
+      "distanceKm": 19.145,
+      "latitude": 28.900899,
+      "longitude": -88.826193
+    },
+    {
+      "hoursAhead": 12,
+      "distanceKm": 38.29,
+      "latitude": 28.916499,
+      "longitude": -88.630318
+    },
+    {
+      "hoursAhead": 24,
+      "distanceKm": 76.58,
+      "latitude": 28.946849,
+      "longitude": -88.238394
+    }
+  ],
+  "model": {
+    "type": "prototype_forward_drift",
+    "note": "Simplified demonstration model. Uses constant environmental conditions."
+  }
+}
