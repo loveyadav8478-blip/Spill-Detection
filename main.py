@@ -17,6 +17,11 @@ from datetime import datetime, timedelta
 
 from ais_analysis.pipeline import run_ais_pipeline
 
+from fastapi import UploadFile, File, Form
+from datetime import datetime
+
+from detection.detection_service import run_spill_detection
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, Form
@@ -378,6 +383,23 @@ async def process_spill(
 @app.get("/")
 async def health():
     return {"status": "ok"}
+
+
+
+@app.post("/spill-detection/upload")
+async def upload_spill_detection(
+    spill_id: str = Form(...),
+    image_timestamp: datetime = Form(...),
+    satellite_image: UploadFile = File(...),
+    spill_mask: UploadFile = File(...),
+):
+    return await run_spill_detection(
+        spill_id=spill_id,
+        image_timestamp=image_timestamp,
+        satellite_image=satellite_image,
+        spill_mask=spill_mask,
+    )
+
 
 @app.get("/ais/test-pipeline")
 async def test_ais_pipeline():
