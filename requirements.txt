@@ -8,4 +8,4 @@ pydantic
 python-multipart
 shapely
 opencv-python-headless
-Pillowj
+Pillow

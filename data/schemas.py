@@ -14,9 +14,17 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field, confloat, conint
+from pydantic import BaseModel, Field
+
+Lat = Annotated[float, Field(ge=-90, le=90)]
+Lon = Annotated[float, Field(ge=-180, le=180)]
+Deg360 = Annotated[float, Field(ge=0, lt=360)]
+Unit = Annotated[float, Field(ge=0, le=1)]
+Pct100 = Annotated[float, Field(ge=0, le=100)]
+PositiveInt = Annotated[int, Field(gt=0)]
+RankInt = Annotated[int, Field(ge=1)]
 
 
 # ---------------------------------------------------------------------------
@@ -24,8 +32,8 @@ from pydantic import BaseModel, Field, confloat, conint
 # ---------------------------------------------------------------------------
 
 class LatLon(BaseModel):
-    lat: confloat(ge=-90, le=90)
-    lon: confloat(ge=-180, le=180)
+    lat: Lat
+    lon: Lon
 
 
 class TimedPoint(LatLon):
@@ -65,10 +73,10 @@ class DetectionOutput(BaseModel):
     detected_mask: GeoJSONPolygon
     area_km2: float
     perimeter_km: float
-    centroid_lat: confloat(ge=-90, le=90)
-    centroid_lon: confloat(ge=-180, le=180)
+    centroid_lat: Lat
+    centroid_lon: Lon
     detection_timestamp: datetime
-    confidence_score: confloat(ge=0, le=1)
+    confidence_score: Unit
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +95,7 @@ class EnvironmentVector(BaseModel):
     """Fetched internally by the hindcast module - never supplied by
     detection or by the caller."""
     speed_kmh: float
-    direction_deg: confloat(ge=0, lt=360)
+    direction_deg: Deg360
     source: str = Field(description="'static_sample' or 'live_api'")
     data_timestamp: datetime
 
@@ -95,9 +103,9 @@ class EnvironmentVector(BaseModel):
 class HindcastModelParams(BaseModel):
     """Fixed constants, not calculated per-request."""
     windage_coefficient: float = 0.03
-    timestep_minutes: conint(gt=0) = 30
-    lookback_hours: conint(gt=0) = 12
-    lookahead_hours: conint(gt=0) = 12
+    timestep_minutes: PositiveInt = 30
+    lookback_hours: PositiveInt = 12
+    lookahead_hours: PositiveInt = 12
 
 
 class HindcastOutput(BaseModel):
@@ -122,11 +130,11 @@ class HindcastOutput(BaseModel):
 class AISPing(BaseModel):
     mmsi: str
     base_date_time: datetime
-    lat: confloat(ge=-90, le=90)
-    lon: confloat(ge=-180, le=180)
+    lat: Lat
+    lon: Lon
     sog: float = Field(description="Speed over ground, knots")
-    cog: confloat(ge=0, lt=360) = Field(description="Course over ground")
-    heading: Optional[confloat(ge=0, lt=360)] = None
+    cog: Deg360 = Field(description="Course over ground")
+    heading: Optional[Deg360] = None
     vessel_name: Optional[str] = None
     imo: Optional[str] = None
     call_sign: Optional[str] = None
@@ -172,8 +180,8 @@ class AISFilterOutput(BaseModel):
 class AnomalyFlags(BaseModel):
     ais_gap_detected: bool
     gap_duration_min: float = 0.0
-    speed_deviation_score: confloat(ge=0, le=1)
-    course_deviation_score: confloat(ge=0, le=1)
+    speed_deviation_score: Unit
+    course_deviation_score: Unit
     loitering_detected: bool = False
 
 
@@ -184,8 +192,8 @@ class ScoredVessel(BaseModel):
     min_distance_to_origin_km: float
     time_delta_to_origin_min: float
     anomaly: AnomalyFlags
-    final_suspect_score: confloat(ge=0, le=1)
-    rank: conint(ge=1)
+    final_suspect_score: Unit
+    rank: RankInt
 
 
 class AISScoreOutput(BaseModel):
@@ -206,7 +214,7 @@ class ZoneType(str, Enum):
 class EnvironmentalOverlayZone(BaseModel):
     zone_name: str
     zone_type: ZoneType
-    overlap_pct: confloat(ge=0, le=100)
+    overlap_pct: Pct100
 
 
 class EnvironmentalOverlayOutput(BaseModel):
@@ -223,7 +231,7 @@ class ReportOutput(BaseModel):
     generated_at: datetime
     summary_text: str
     top_suspect_mmsi: Optional[str] = None
-    confidence_level: confloat(ge=0, le=1)
+    confidence_level: Unit
     map_snapshot_url: Optional[str] = None
 
 
