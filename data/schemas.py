@@ -91,12 +91,17 @@ class HindcastInput(BaseModel):
     observation_time: datetime
 
 
+class EnvironmentSource(str, Enum):
+    static_sample = "static_sample"
+    live_api = "live_api"
+
+
 class EnvironmentVector(BaseModel):
     """Fetched internally by the hindcast module - never supplied by
     detection or by the caller."""
     speed_kmh: float
     direction_deg: Deg360
-    source: str = Field(description="'static_sample' or 'live_api'")
+    source: EnvironmentSource
     data_timestamp: datetime
 
 
