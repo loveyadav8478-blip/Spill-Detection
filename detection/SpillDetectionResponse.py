@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class Centroid(BaseModel):
+    """
+    Geographic center of the detected spill.
+    """
+
+    latitude: float = Field(
+        ...,
+        ge=-90,
+        le=90
+    )
+
+    longitude: float = Field(
+        ...,
+        ge=-180,
+        le=180
+    )
+
+
+class BoundingBox(BaseModel):
+    """
+    Approximate rectangular dimensions
+    containing the spill.
+    """
+
+    width_km: float
+    height_km: float
+
+
+class SpillShape(BaseModel):
+    """
+    Shape characteristics calculated using PCA.
+    """
+
+    major_axis_km: float
+
+    minor_axis_km: float
+
+    eccentricity: float = Field(
+        ...,
+        ge=0,
+        le=1
+    )
+
+
+class ConnectedComponents(BaseModel):
+    """
+    Connected regions found in the spill mask.
+    """
+
+    count: int
+
+    largest_component_pixels: int
+
+
+class SpillDetectionResponse(BaseModel):
+    """
+    Complete response returned by the
+    spill detection/characterization module.
+    """
+
+    spill_id: str
+
+    spill_detected: bool
+
+    detection_timestamp: datetime
+
+    # None because the current prototype receives
+    # an already-created mask rather than generating
+    # the mask using an ML model.
+    confidence_score: Optional[float] = Field(
+        default=None,
+        ge=0,
+        le=1
+    )
+
+    spill_pixel_count: int
+
+    area_km2: float
+
+    perimeter_km: float
+
+    centroid: Centroid
+
+    bounding_box: BoundingBox
+
+    shape: SpillShape
+
+    connected_components: ConnectedComponents
