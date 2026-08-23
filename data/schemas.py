@@ -14,17 +14,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Optional
+from typing import Optional
 
-from pydantic import BaseModel, Field
-
-Lat = Annotated[float, Field(ge=-90, le=90)]
-Lon = Annotated[float, Field(ge=-180, le=180)]
-Deg360 = Annotated[float, Field(ge=0, lt=360)]
-Unit = Annotated[float, Field(ge=0, le=1)]
-Pct100 = Annotated[float, Field(ge=0, le=100)]
-PositiveInt = Annotated[int, Field(gt=0)]
-RankInt = Annotated[int, Field(ge=1)]
+from pydantic import BaseModel, Field, confloat, conint
 
 
 # ---------------------------------------------------------------------------
@@ -32,8 +24,8 @@ RankInt = Annotated[int, Field(ge=1)]
 # ---------------------------------------------------------------------------
 
 class LatLon(BaseModel):
-    lat: Lat
-    lon: Lon
+    lat: confloat(ge=-90, le=90)
+    lon: confloat(ge=-180, le=180)
 
 
 class TimedPoint(LatLon):
@@ -73,10 +65,10 @@ class DetectionOutput(BaseModel):
     detected_mask: GeoJSONPolygon
     area_km2: float
     perimeter_km: float
-    centroid_lat: Lat
-    centroid_lon: Lon
+    centroid_lat: confloat(ge=-90, le=90)
+    centroid_lon: confloat(ge=-180, le=180)
     detection_timestamp: datetime
-    confidence_score: Unit
+    confidence_score: confloat(ge=0, le=1)
 
 
 # ---------------------------------------------------------------------------
@@ -91,26 +83,21 @@ class HindcastInput(BaseModel):
     observation_time: datetime
 
 
-class EnvironmentSource(str, Enum):
-    static_sample = "static_sample"
-    live_api = "live_api"
-
-
 class EnvironmentVector(BaseModel):
     """Fetched internally by the hindcast module - never supplied by
     detection or by the caller."""
     speed_kmh: float
-    direction_deg: Deg360
-    source: EnvironmentSource
+    direction_deg: confloat(ge=0, lt=360)
+    source: str = Field(description="'static_sample' or 'live_api'")
     data_timestamp: datetime
 
 
 class HindcastModelParams(BaseModel):
     """Fixed constants, not calculated per-request."""
     windage_coefficient: float = 0.03
-    timestep_minutes: PositiveInt = 30
-    lookback_hours: PositiveInt = 12
-    lookahead_hours: PositiveInt = 12
+    timestep_minutes: conint(gt=0) = 30
+    lookback_hours: conint(gt=0) = 12
+    lookahead_hours: conint(gt=0) = 12
 
 
 class HindcastOutput(BaseModel):
@@ -135,11 +122,11 @@ class HindcastOutput(BaseModel):
 class AISPing(BaseModel):
     mmsi: str
     base_date_time: datetime
-    lat: Lat
-    lon: Lon
+    lat: confloat(ge=-90, le=90)
+    lon: confloat(ge=-180, le=180)
     sog: float = Field(description="Speed over ground, knots")
-    cog: Deg360 = Field(description="Course over ground")
-    heading: Optional[Deg360] = None
+    cog: confloat(ge=0, lt=360) = Field(description="Course over ground")
+    heading: Optional[confloat(ge=0, lt=360)] = None
     vessel_name: Optional[str] = None
     imo: Optional[str] = None
     call_sign: Optional[str] = None
@@ -185,8 +172,8 @@ class AISFilterOutput(BaseModel):
 class AnomalyFlags(BaseModel):
     ais_gap_detected: bool
     gap_duration_min: float = 0.0
-    speed_deviation_score: Unit
-    course_deviation_score: Unit
+    speed_deviation_score: confloat(ge=0, le=1)
+    course_deviation_score: confloat(ge=0, le=1)
     loitering_detected: bool = False
 
 
@@ -197,8 +184,8 @@ class ScoredVessel(BaseModel):
     min_distance_to_origin_km: float
     time_delta_to_origin_min: float
     anomaly: AnomalyFlags
-    final_suspect_score: Unit
-    rank: RankInt
+    final_suspect_score: confloat(ge=0, le=1)
+    rank: conint(ge=1)
 
 
 class AISScoreOutput(BaseModel):
@@ -219,7 +206,7 @@ class ZoneType(str, Enum):
 class EnvironmentalOverlayZone(BaseModel):
     zone_name: str
     zone_type: ZoneType
-    overlap_pct: Pct100
+    overlap_pct: confloat(ge=0, le=100)
 
 
 class EnvironmentalOverlayOutput(BaseModel):
@@ -236,7 +223,7 @@ class ReportOutput(BaseModel):
     generated_at: datetime
     summary_text: str
     top_suspect_mmsi: Optional[str] = None
-    confidence_level: Unit
+    confidence_level: confloat(ge=0, le=1)
     map_snapshot_url: Optional[str] = None
 
 
