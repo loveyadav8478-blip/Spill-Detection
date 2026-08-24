@@ -223,6 +223,137 @@ async def analyze_ais(input_data: AISFilterInput):
         session.close()
 
 
+import json
+
+@app.post("/spill-detection/pipeline/full")
+async def run_full_spill_pipeline(
+    image_timestamp: datetime = Form(...),
+    satellite_image: UploadFile = File(...),
+    spill_mask: UploadFile = File(...),
+    raw_ais_pings_json: str = Form(...),
+    coarse_radius_km: float = Form(50.0),
+    coarse_time_window_hours: float = Form(6.0),
+    trajectory_max_distance_km: float = Form(5.0),
+):
+    """
+    Executes the full pipeline sequentially in one single request:
+    1. Detection -> Saves Incident & Detection ModuleResult
+    2. Hindcast  -> Saves Hindcast ModuleResult
+    3. AIS       -> Saves AIS ModuleResult
+    Returns the complete structured dashboard output.
+    """
+    session = SessionLocal()
+
+    try:
+        # =====================================================================
+        # STAGE 1: SPILL DETECTION
+        # =====================================================================
+        detection_res = await run_spill_detection(
+            image_timestamp=image_timestamp,
+            satellite_image=satellite_image,
+            spill_mask=spill_mask,
+        )
+
+        incident = Incident(
+            spill_id=detection_res.spill_id,
+            incident_code=f"INC-{detection_res.spill_id}",
+            status=detection_res.status,
+        )
+        session.add(incident)
+
+        detection_module_result = ModuleResult(
+            spill_id=detection_res.spill_id,
+            module_name="detection",
+            result=detection_res.model_dump(mode="json"),
+        )
+        session.add(detection_module_result)
+
+        # =====================================================================
+        # STAGE 2: HINDCAST RUN
+        # =====================================================================
+        # Build Hindcast Input from Stage 1 output
+        hindcast_input = HindcastInput(
+            spill_id=detection_res.spill_id,
+            observed_position=LatLon(
+                lat=detection_res.centroid_lat,
+                lon=detection_res.centroid_lon
+            ),
+            observation_time=detection_res.detection_timestamp,
+        )
+
+        hindcast_res = run_hindcast(hindcast_input)
+
+        hindcast_module_result = ModuleResult(
+            spill_id=detection_res.spill_id,
+            module_name="hindcast",
+            result=hindcast_res.model_dump(mode="json"),
+        )
+        session.add(hindcast_module_result)
+
+        # =====================================================================
+        # STAGE 3: AIS FILTER & SCORE
+        # =====================================================================
+        # Build AIS Input from Stage 2 output and uploaded AIS pings
+        parsed_pings = [AISPing(**p) for p in json.loads(raw_ais_pings_json)]
+        
+        ais_input = AISFilterInput(
+            spill_id=detection_res.spill_id,
+            origin_estimate=hindcast_res.origin_estimate,
+            backward_path=hindcast_res.backward_path,
+            raw_ais_pings=parsed_pings,
+            coarse_radius_km=coarse_radius_km,
+            coarse_time_window_hours=coarse_time_window_hours,
+            trajectory_max_distance_km=trajectory_max_distance_km,
+        )
+
+        filter_output, score_output = run_ais_pipeline(input_data=ais_input)
+
+        ais_combined_payload = {
+            "filter_output": (
+                filter_output.model_dump(mode="json")
+                if hasattr(filter_output, "model_dump")
+                else filter_output
+            ),
+            "score_output": (
+                score_output.model_dump(mode="json")
+                if hasattr(score_output, "model_dump")
+                else score_output
+            ),
+        }
+
+        ais_module_result = ModuleResult(
+            spill_id=detection_res.spill_id,
+            module_name="ais",
+            result=ais_combined_payload,
+        )
+        session.add(ais_module_result)
+
+        # =====================================================================
+        # COMMIT TRANSACTION & RETURN
+        # =====================================================================
+        session.commit()
+
+        return {
+            "spill_id": detection_res.spill_id,
+            "status": "COMPLETED",
+            "detection": detection_res,
+            "hindcast": hindcast_res,
+            "ais_analysis": {
+                "filter_output": filter_output,
+                "score_output": score_output,
+            },
+        }
+
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pipeline execution failed: {str(e)}"
+        )
+
+    finally:
+        session.close()
+
 @app.get("/spill-data/prerequisites/{spill_id}")
 def get_prerequisite_data(
     spill_id: str,
