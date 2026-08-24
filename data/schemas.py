@@ -258,7 +258,7 @@ class AISPing(BaseModel):
 class AISFilterInput(BaseModel):
     spill_id: str
     origin_estimate: TimedPoint
-    backward_path: list[TimedPoint]
+    backward_path: Optional[list[TimedPoint]]
     raw_ais_pings: list[AISPing]
     coarse_radius_km: float = 50.0
     coarse_time_window_hours: float = 6.0
