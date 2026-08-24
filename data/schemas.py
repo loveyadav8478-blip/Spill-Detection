@@ -27,6 +27,28 @@ PositiveInt = Annotated[int, Field(gt=0)]
 RankInt = Annotated[int, Field(ge=1)]
 
 
+class TimeSource(str, Enum):
+    """Where detection_timestamp actually came from - makes the
+    disclosed-assumption pattern a real, inspectable field instead of
+    an undocumented guess. 'assumed_ltan' = no real timestamp was
+    recoverable from the file, so a representative time was assumed
+    based on Sentinel-1's known dawn-dusk local overpass time."""
+    filename = "filename"
+    manifest = "manifest"
+    exif = "exif"
+    csv_metadata = "csv_metadata"
+    assumed_ltan = "assumed_ltan"
+    unknown = "unknown"
+
+
+class IncidentStatus(str, Enum):
+    DETECTED = "DETECTED"
+    HINDCASTING = "HINDCASTING"
+    FILTERING = "FILTERING"
+    SCORING = "SCORING"
+    ATTRIBUTED = "ATTRIBUTED"
+
+
 # ---------------------------------------------------------------------------
 # Shared geometry primitives
 # ---------------------------------------------------------------------------
@@ -77,6 +99,9 @@ class DetectionOutput(BaseModel):
     centroid_lon: Lon
     detection_timestamp: datetime
     confidence_score: Unit
+    sar_file_path: Optional[str] = None
+    observation_time: Optional[datetime] = None  # None when time-of-day is genuinely unknown
+    time_source: TimeSource = TimeSource.unknown
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +118,7 @@ class HindcastInput(BaseModel):
 
 class EnvironmentSource(str, Enum):
     static_sample = "static_sample"
+    synthetic_dataset = "synthetic_dataset"
     live_api = "live_api"
 
 
@@ -190,15 +216,43 @@ class AnomalyFlags(BaseModel):
     loitering_detected: bool = False
 
 
+class ScoringWeights(BaseModel):
+    """The weights actually used to combine component scores into
+    final_suspect_score - surfaced so the value is inspectable, not
+    just baked silently into the arithmetic."""
+    proximity: float = 0.4
+    temporal: float = 0.15
+    trajectory: float = 0.15
+    behavior: float = 0.3
+
+
 class ScoredVessel(BaseModel):
     mmsi: str
     vessel_name: Optional[str] = None
+    # vessel metadata - was already present in AISPing but dropped
+    # before reaching this model; now carried through.
+    imo: Optional[str] = None
+    call_sign: Optional[str] = None
+    vessel_type: Optional[int] = None
+    length: Optional[float] = None
+    width: Optional[float] = None
+
     trajectory_points: list[TimedPoint]
     min_distance_to_origin_km: float
     time_delta_to_origin_min: float
     anomaly: AnomalyFlags
+
+    # component scores - were computed internally already, now exposed
+    proximity_score: Unit
+    temporal_score: Unit
+    trajectory_score: Unit
+    behavior_score: Unit
+
     final_suspect_score: Unit
     rank: RankInt
+
+    explanation: list[str] = Field(default_factory=list)
+    weights_used: ScoringWeights = Field(default_factory=ScoringWeights)
 
 
 class AISScoreOutput(BaseModel):
@@ -241,8 +295,59 @@ class ReportOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# 8. Dashboard aggregate - single response the frontend renders from
+# 8. Incident record - lifecycle wrapper. Doesn't belong to detection,
+# hindcast, or AIS individually (each of those stays a pure function of
+# its own inputs) - this is assembled by the orchestrator from pieces
+# of DetectionOutput + HindcastOutput plus pipeline-run metadata.
 # ---------------------------------------------------------------------------
+
+class IncidentRecord(BaseModel):
+    id: int
+    incident_code: str
+    observation_date: str  # date-only, e.g. "2020-03-07" - always available
+    observation_time: Optional[datetime] = None  # None if genuinely unrecoverable
+    time_source: TimeSource
+    sar_file_path: Optional[str] = None
+    is_simplified_model: bool
+    model_notes: str
+    status: IncidentStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# 9. Attribution response - the exact per-vessel record the frontend
+# consumes. Built by the API layer from IncidentRecord + ScoredVessel;
+# neither of those two models is reduced to produce this, this just
+# reshapes/rescales them into the frontend's expected contract
+# (0-100 scores, JSON-encoded string fields for explanation/weights
+# to match how the frontend currently stores/parses them).
+# ---------------------------------------------------------------------------
+
+class VesselSummary(BaseModel):
+    mmsi: str
+    vessel_name: Optional[str] = None
+    imo: Optional[str] = None
+    call_sign: Optional[str] = None
+    vessel_type: Optional[int] = None
+    length: Optional[float] = None
+    width: Optional[float] = None
+
+
+class AttributionResponse(BaseModel):
+    id: int
+    incident: IncidentRecord
+    vessel: VesselSummary
+    proximity_score: Pct100
+    temporal_score: Pct100
+    trajectory_score: Pct100
+    behavior_score: Pct100
+    attribution_score: Pct100
+    explanation_json: str  # JSON-encoded list[str] - matches frontend's current storage shape
+    weights_used_json: str  # JSON-encoded dict - same reason
+
+
+
 
 class DashboardResponse(BaseModel):
     detection: DetectionOutput

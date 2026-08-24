@@ -27,6 +27,6 @@ class SpillDetectionRequest(BaseModel):
     )
 
     image_timestamp: datetime = Field(
-        "2020-03-07T00:00:00" ,
+        datetime(2020, 3, 7, 0, 0) ,
         description="Timestamp of the satellite observation"
     )
