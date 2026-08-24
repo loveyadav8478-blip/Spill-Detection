@@ -22,6 +22,7 @@ from PIL import Image
 from shapely.geometry import Point, LineString
 from detection.detection_service import run_spill_detection
 from detection.SpillDetectionResponse import SpillDetectionResponse
+from hindcasting.hindcast_service import run_hindcast
 
 from data.schemas import (
     DetectionOutput,
@@ -143,6 +144,13 @@ async def upload_spill_detection(
         satellite_image=satellite_image,
         spill_mask=spill_mask,
     )
+
+
+@app.post("/hindcast/rundrifts", response_model=HindcastOutput)
+async def run_hindcast_service(payload: HindcastInput):
+    repsonse = run_hindcast(payload)
+    
+    return repsonse
 
 
 @app.get("/ais/test-pipeline")

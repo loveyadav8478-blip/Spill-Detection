@@ -33,6 +33,7 @@ class TimeSource(str, Enum):
     an undocumented guess. 'assumed_ltan' = no real timestamp was
     recoverable from the file, so a representative time was assumed
     based on Sentinel-1's known dawn-dusk local overpass time."""
+
     filename = "filename"
     manifest = "manifest"
     exif = "exif"
@@ -53,6 +54,7 @@ class IncidentStatus(str, Enum):
 # Shared geometry primitives
 # ---------------------------------------------------------------------------
 
+
 class LatLon(BaseModel):
     lat: Lat
     lon: Lon
@@ -60,11 +62,13 @@ class LatLon(BaseModel):
 
 class TimedPoint(LatLon):
     """A lat/lon paired with an absolute timestamp - used for path arrays."""
+
     t: datetime
 
 
 class GeoJSONPolygon(BaseModel):
     """Minimal GeoJSON polygon representation for the spill mask."""
+
     type: str = Field(default="Polygon", frozen=True)
     coordinates: list[list[list[float]]]  # [ [ [lon, lat], [lon, lat], ... ] ]
 
@@ -73,34 +77,83 @@ class GeoJSONPolygon(BaseModel):
 # 1. Detection module
 # ---------------------------------------------------------------------------
 
+
 class DetectionRequest(BaseModel):
     """
-    Metadata accompanying the two-image upload (raw SAR image + mask image).
-    The actual image bytes travel as multipart UploadFile fields in the
-    FastAPI route, not in this model - this covers everything else the
-    endpoint needs alongside them.
+    Request contract for oil-spill detection/characterization.
+    Aligned to detection.SpillDetectionRequest - rasterio reads the
+    geotransform straight from the file, so no manual top_left_lat/lon/
+    pixel_size_deg is needed here (images are confirmed georeferenced).
     """
+
     spill_id: str
-    source_image_filename: str
-    mask_image_filename: str
+    image_path: str
+    mask_path: str
     image_timestamp: datetime
-    # geotransform needed to convert pixel-space mask -> real lat/lon polygon
-    top_left_lat: float
-    top_left_lon: float
-    pixel_size_deg: float
+
+
+class Centroid(BaseModel):
+    """Geographic center of the detected spill."""
+
+    latitude: Lat
+    longitude: Lon
+
+
+class BoundingBox(BaseModel):
+    """Approximate rectangular dimensions containing the spill."""
+
+    width_km: float
+    height_km: float
+
+
+class SpillShape(BaseModel):
+    """Shape characteristics calculated using PCA."""
+
+    major_axis_km: float
+    minor_axis_km: float
+    eccentricity: Unit
+
+
+class ConnectedComponents(BaseModel):
+    """Connected regions found in the spill mask."""
+
+    count: int
+    largest_component_pixels: int
 
 
 class DetectionOutput(BaseModel):
+    """
+    Aligned to detection.SpillDetectionResponse's field names/shapes so
+    detect_spill()'s output maps onto this directly with no adapter.
+    Adds mask_polygon (not yet produced by detect_spill() - populate via
+    rasterio.features.shapes() once wired in) and the timestamp-
+    provenance / file-path fields the incident-tracking layer needs.
+    """
+
     spill_id: str
-    detected_mask: GeoJSONPolygon
+    spill_detected: bool
+    detection_timestamp: datetime
+
+    # None because the current prototype receives an already-created
+    # mask rather than generating one via an ML model.
+    confidence_score: Optional[Unit] = None
+
+    spill_pixel_count: int
     area_km2: float
     perimeter_km: float
-    centroid_lat: Lat
-    centroid_lon: Lon
-    detection_timestamp: datetime
-    confidence_score: Unit
+    centroid: Centroid
+    bounding_box: BoundingBox
+    shape: SpillShape
+    connected_components: ConnectedComponents
+
+    detected_mask: Optional[GeoJSONPolygon] = (
+        None  # None until polygon extraction is wired in
+    )
+
     sar_file_path: Optional[str] = None
-    observation_time: Optional[datetime] = None  # None when time-of-day is genuinely unknown
+    observation_time: Optional[datetime] = (
+        None  # None when time-of-day is genuinely unknown
+    )
     time_source: TimeSource = TimeSource.unknown
 
 
@@ -108,9 +161,11 @@ class DetectionOutput(BaseModel):
 # 2. Hindcast / drift module
 # ---------------------------------------------------------------------------
 
+
 class HindcastInput(BaseModel):
     """Subset of DetectionOutput actually needed by hindcast - detection
     stays free of any environmental/weather knowledge."""
+
     spill_id: str
     observed_position: LatLon
     observation_time: datetime
@@ -119,12 +174,14 @@ class HindcastInput(BaseModel):
 class EnvironmentSource(str, Enum):
     static_sample = "static_sample"
     synthetic_dataset = "synthetic_dataset"
+    cached_live_sample = "cached_live_sample"
     live_api = "live_api"
 
 
 class EnvironmentVector(BaseModel):
     """Fetched internally by the hindcast module - never supplied by
     detection or by the caller."""
+
     speed_kmh: float
     direction_deg: Deg360
     source: EnvironmentSource
@@ -133,6 +190,7 @@ class EnvironmentVector(BaseModel):
 
 class HindcastModelParams(BaseModel):
     """Fixed constants, not calculated per-request."""
+
     windage_coefficient: float = 0.03
     timestep_minutes: PositiveInt = 30
     lookback_hours: PositiveInt = 12
@@ -152,11 +210,25 @@ class HindcastOutput(BaseModel):
         "Single representative current/wind vector, deterministic single "
         "path - not a spatially-varying field or ensemble."
     )
+    status: str = Field(
+        default="SUCCESS",
+        description="Processing status of the spill detection request",
+    )
+
+    message: str = Field(
+        default="Spill detection completed successfully",
+        description="Human-readable processing message",
+    )
+
+    error: Optional[str] = Field(
+        default=None, description="Error details when processing fails"
+    )
 
 
 # ---------------------------------------------------------------------------
 # 3. AIS raw ingestion (matches marinecadastre.gov schema)
 # ---------------------------------------------------------------------------
+
 
 class AISPing(BaseModel):
     mmsi: str
@@ -181,6 +253,7 @@ class AISPing(BaseModel):
 # ---------------------------------------------------------------------------
 # 4. AIS filtering module
 # ---------------------------------------------------------------------------
+
 
 class AISFilterInput(BaseModel):
     spill_id: str
@@ -208,6 +281,7 @@ class AISFilterOutput(BaseModel):
 # 5. AIS scoring module
 # ---------------------------------------------------------------------------
 
+
 class AnomalyFlags(BaseModel):
     ais_gap_detected: bool
     gap_duration_min: float = 0.0
@@ -220,6 +294,7 @@ class ScoringWeights(BaseModel):
     """The weights actually used to combine component scores into
     final_suspect_score - surfaced so the value is inspectable, not
     just baked silently into the arithmetic."""
+
     proximity: float = 0.4
     temporal: float = 0.15
     trajectory: float = 0.15
@@ -264,6 +339,7 @@ class AISScoreOutput(BaseModel):
 # 6. Environmental overlay (optional / tier 3)
 # ---------------------------------------------------------------------------
 
+
 class ZoneType(str, Enum):
     marine_protected_area = "mpa"
     fishery = "fishery"
@@ -285,6 +361,7 @@ class EnvironmentalOverlayOutput(BaseModel):
 # 7. Report / alert generation
 # ---------------------------------------------------------------------------
 
+
 class ReportOutput(BaseModel):
     spill_id: str
     generated_at: datetime
@@ -300,6 +377,7 @@ class ReportOutput(BaseModel):
 # its own inputs) - this is assembled by the orchestrator from pieces
 # of DetectionOutput + HindcastOutput plus pipeline-run metadata.
 # ---------------------------------------------------------------------------
+
 
 class IncidentRecord(BaseModel):
     id: int
@@ -324,6 +402,7 @@ class IncidentRecord(BaseModel):
 # to match how the frontend currently stores/parses them).
 # ---------------------------------------------------------------------------
 
+
 class VesselSummary(BaseModel):
     mmsi: str
     vessel_name: Optional[str] = None
@@ -343,10 +422,10 @@ class AttributionResponse(BaseModel):
     trajectory_score: Pct100
     behavior_score: Pct100
     attribution_score: Pct100
-    explanation_json: str  # JSON-encoded list[str] - matches frontend's current storage shape
+    explanation_json: (
+        str  # JSON-encoded list[str] - matches frontend's current storage shape
+    )
     weights_used_json: str  # JSON-encoded dict - same reason
-
-
 
 
 class DashboardResponse(BaseModel):
