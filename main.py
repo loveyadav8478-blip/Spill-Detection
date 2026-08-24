@@ -14,9 +14,11 @@ from __future__ import annotations
 import io
 import math
 from datetime import datetime, timedelta
+from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from alchemy import ModuleResult
 from db import engine
 from db import SessionLocal
 from alchemy import Incident, ModuleResult, Base
@@ -67,6 +69,30 @@ def test_database_connection():
         print("Database connection failed:", e)
 
 
+def save_or_update_module_result(
+    session: Session, spill_id: str, module_name: str, payload: dict
+):
+    """
+    Inserts a new ModuleResult or updates the existing one if
+    (spill_id, module_name) already exists in PostgreSQL.
+    """
+    record = (
+        session.query(ModuleResult)
+        .filter(
+            ModuleResult.spill_id == spill_id, ModuleResult.module_name == module_name
+        )
+        .first()
+    )
+
+    if record:
+        record.result = payload
+    else:
+        record = ModuleResult(
+            spill_id=spill_id, module_name=module_name, result=payload
+        )
+        session.add(record)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -93,41 +119,34 @@ async def upload_spill_detection(
     session = SessionLocal()
 
     try:
-
         # ---------------------------------------------
-        # 1. Create Incident
+        # 1. Create or Update Incident
         # ---------------------------------------------
-
         incident = Incident(
             spill_id=res.spill_id,
             incident_code=f"INC-{res.spill_id}",
             status=res.status,
         )
-
-        session.add(incident)
+        session.merge(incident)
 
         # ---------------------------------------------
-        # 2. Save Detection Result
+        # 2. Save or Update Detection Result
         # ---------------------------------------------
-
-        module_result = ModuleResult(
+        save_or_update_module_result(
+            session=session,
             spill_id=res.spill_id,
             module_name="detection",
-            result=res.model_dump(mode="json"),
+            payload=res.model_dump(mode="json"),
         )
-
-        session.add(module_result)
 
         # ---------------------------------------------
         # 3. Commit
         # ---------------------------------------------
-
         session.commit()
 
         # ---------------------------------------------
-        # 4. Return existing detection response
+        # 4. Return detection response
         # ---------------------------------------------
-
         return res
 
     except Exception:
@@ -145,25 +164,17 @@ async def run_hindcast_service(payload: HindcastInput):
     session = SessionLocal()
 
     try:
-
         # --------------------------------------------------
-        # Save Hindcast Result
+        # Save or Update Hindcast Result in PostgreSQL
         # --------------------------------------------------
-
-        module_result = ModuleResult(
+        save_or_update_module_result(
+            session=session,
             spill_id=payload.spill_id,
             module_name="hindcast",
-            result=response.model_dump(mode="json"),
+            payload=response.model_dump(mode="json")
         )
-
-        session.add(module_result)
-
-        # --------------------------------------------------
-        # Commit
-        # --------------------------------------------------
-
+        
         session.commit()
-
         return response
 
     except Exception:
@@ -184,9 +195,6 @@ async def analyze_ais(input_data: AISFilterInput):
     session = SessionLocal()
 
     try:
-        # --------------------------------------------------
-        # Save AIS Analysis Result
-        # --------------------------------------------------
         combined_result = {
             "filter_output": (
                 filter_output.model_dump(mode="json")
@@ -200,17 +208,14 @@ async def analyze_ais(input_data: AISFilterInput):
             ),
         }
 
-        module_result = ModuleResult(
+        # Safe upsert
+        save_or_update_module_result(
+            session=session,
             spill_id=input_data.spill_id,
             module_name="ais",
-            result=combined_result,
+            payload=combined_result,
         )
 
-        session.add(module_result)
-
-        # --------------------------------------------------
-        # Commit
-        # --------------------------------------------------
         session.commit()
 
         return {"filter_output": filter_output, "score_output": score_output}
@@ -225,29 +230,26 @@ async def analyze_ais(input_data: AISFilterInput):
 
 import json
 
+
 @app.post("/spill-detection/pipeline/full")
 async def run_full_spill_pipeline(
     image_timestamp: datetime = Form(...),
     satellite_image: UploadFile = File(...),
     spill_mask: UploadFile = File(...),
-    raw_ais_pings_json: str = Form(...),
     coarse_radius_km: float = Form(50.0),
     coarse_time_window_hours: float = Form(6.0),
     trajectory_max_distance_km: float = Form(5.0),
 ):
     """
-    Executes the full pipeline sequentially in one single request:
-    1. Detection -> Saves Incident & Detection ModuleResult
-    2. Hindcast  -> Saves Hindcast ModuleResult
-    3. AIS       -> Saves AIS ModuleResult
-    Returns the complete structured dashboard output.
+    Runs Detection -> Hindcast -> AIS Analysis sequentially in a single call.
+    Handles upserts and pipeline data persistence cleanly.
     """
     session = SessionLocal()
 
     try:
-        # =====================================================================
+        # ---------------------------------------------------------------------
         # STAGE 1: SPILL DETECTION
-        # =====================================================================
+        # ---------------------------------------------------------------------
         detection_res = await run_spill_detection(
             image_timestamp=image_timestamp,
             satellite_image=satellite_image,
@@ -259,48 +261,43 @@ async def run_full_spill_pipeline(
             incident_code=f"INC-{detection_res.spill_id}",
             status=detection_res.status,
         )
-        session.add(incident)
+        session.merge(incident)  # Works because spill_id is primary key on Incident
 
-        detection_module_result = ModuleResult(
+        save_or_update_module_result(
+            session=session,
             spill_id=detection_res.spill_id,
             module_name="detection",
-            result=detection_res.model_dump(mode="json"),
+            payload=detection_res.model_dump(mode="json"),
         )
-        session.add(detection_module_result)
 
-        # =====================================================================
+        # ---------------------------------------------------------------------
         # STAGE 2: HINDCAST RUN
-        # =====================================================================
-        # Build Hindcast Input from Stage 1 output
+        # ---------------------------------------------------------------------
         hindcast_input = HindcastInput(
             spill_id=detection_res.spill_id,
             observed_position=LatLon(
                 lat=detection_res.centroid.latitude,
-                lon=detection_res.centroid.longitude
+                lon=detection_res.centroid.longitude,
             ),
             observation_time=detection_res.detection_timestamp,
         )
 
         hindcast_res = run_hindcast(hindcast_input)
 
-        hindcast_module_result = ModuleResult(
+        save_or_update_module_result(
+            session=session,
             spill_id=detection_res.spill_id,
             module_name="hindcast",
-            result=hindcast_res.model_dump(mode="json"),
+            payload=hindcast_res.model_dump(mode="json"),
         )
-        session.add(hindcast_module_result)
 
-        # =====================================================================
+        # ---------------------------------------------------------------------
         # STAGE 3: AIS FILTER & SCORE
-        # =====================================================================
-        # Build AIS Input from Stage 2 output and uploaded AIS pings
-        parsed_pings = [AISPing(**p) for p in json.loads(raw_ais_pings_json)]
-        
+        # ---------------------------------------------------------------------
         ais_input = AISFilterInput(
             spill_id=detection_res.spill_id,
             origin_estimate=hindcast_res.origin_estimate,
             backward_path=hindcast_res.backward_path,
-            raw_ais_pings=parsed_pings,
             coarse_radius_km=coarse_radius_km,
             coarse_time_window_hours=coarse_time_window_hours,
             trajectory_max_distance_km=trajectory_max_distance_km,
@@ -321,16 +318,16 @@ async def run_full_spill_pipeline(
             ),
         }
 
-        ais_module_result = ModuleResult(
+        save_or_update_module_result(
+            session=session,
             spill_id=detection_res.spill_id,
             module_name="ais",
-            result=ais_combined_payload,
+            payload=ais_combined_payload,
         )
-        session.add(ais_module_result)
 
-        # =====================================================================
+        # ---------------------------------------------------------------------
         # COMMIT TRANSACTION & RETURN
-        # =====================================================================
+        # ---------------------------------------------------------------------
         session.commit()
 
         return {
@@ -347,53 +344,41 @@ async def run_full_spill_pipeline(
     except Exception as e:
         session.rollback()
         raise HTTPException(
-            status_code=500,
-            detail=f"Pipeline execution failed: {str(e)}"
+            status_code=500, detail=f"Pipeline execution failed: {str(e)}"
         )
 
     finally:
-        session.close()
+        session.close()        
+
 
 @app.get("/spill-data/prerequisites/{spill_id}")
 def get_prerequisite_data(
     spill_id: str,
-    target_module: str = Query(
-        ..., description="The module you want to run next (e.g., 'hindcast' or 'ais')"
-    ),
+    target_module: str = Query(..., description="Target module ('hindcast' or 'ais')"),
 ):
-    """
-    Fetches the necessary prior module data needed to run the target_module.
-    - If target_module == 'hindcast', it fetches 'detection' results.
-    - If target_module == 'ais', it fetches 'hindcast' results.
-    """
+    dependency_map = {"hindcast": "detection", "ais": "hindcast", "detection": "detection"}
 
-    # Map what data is required for each target module
-    dependency_map = {"hindcast": "detection", "ais": "hindcast", "detection":"detection"}
-
+    target_module = target_module.lower()
     if target_module not in dependency_map:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid target_module. Must be one of {list(dependency_map.keys())}",
+            detail=f"Invalid target_module '{target_module}'. Allowed values: {list(dependency_map.keys())}"
         )
 
     required_module_name = dependency_map[target_module]
     session = SessionLocal()
 
     try:
-        # Fetch the required prerequisite data from the database
-        record = (
-            session.query(ModuleResult)
-            .filter(
-                ModuleResult.spill_id == spill_id,
-                ModuleResult.module_name == required_module_name,
-            )
-            .first()
-        )
+        record = session.query(ModuleResult).filter(
+            ModuleResult.spill_id == spill_id,
+            ModuleResult.module_name == required_module_name,
+        ).first()
 
         if not record:
+            # Custom 404 message
             raise HTTPException(
                 status_code=404,
-                detail=f"Required prerequisite data from '{required_module_name}' not found for spill_id '{spill_id}'.",
+                detail=f"Prerequisite step '{required_module_name}' has not been run for spill '{spill_id}'."
             )
 
         return {
@@ -403,8 +388,76 @@ def get_prerequisite_data(
             "data": record.result,
         }
 
+    except HTTPException:
+        # Re-raise explicit HTTP errors so 404/400 status codes & messages pass through
+        raise
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Custom 500 message for actual database crashes or unexpected errors
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database query failed while fetching prerequisites: {str(e)}"
+        )
+
+    finally:
+        session.close()
+
+
+@app.get("/spill-data/result/{spill_id}")
+def get_module_result(
+    spill_id: str,
+    module_name: Optional[str] = Query(
+        None,
+        description="Optional module filter: 'detection', 'hindcast', or 'ais'. If omitted, returns all module results.",
+    ),
+):
+    """
+    Generic fetcher to retrieve stored module payload(s) by spill_id and module_name.
+    """
+    session = SessionLocal()
+
+    try:
+        query = session.query(ModuleResult).filter(ModuleResult.spill_id == spill_id)
+
+        if module_name:
+            query = query.filter(ModuleResult.module_name == module_name.lower())
+
+        records = query.all()
+
+        if not records:
+            # Custom 404 message
+            raise HTTPException(
+                status_code=404,
+                detail=f"No results found for spill_id '{spill_id}'"
+                + (f" with module_name '{module_name}'" if module_name else ""),
+            )
+
+        if module_name:
+            return {
+                "spill_id": spill_id,
+                "module_name": records[0].module_name,
+                "created_at": records[0].created_at,
+                "data": records[0].result,
+            }
+
+        return {
+            "spill_id": spill_id,
+            "modules": {
+                rec.module_name: {"created_at": rec.created_at, "data": rec.result}
+                for rec in records
+            },
+        }
+
+    except HTTPException:
+        # Re-raise explicit 404s to pass status code & custom message through
+        raise
+
+    except Exception as e:
+        # Custom 500 message for internal DB query failures
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database query failed while fetching module results: {str(e)}",
+        )
 
     finally:
         session.close()
