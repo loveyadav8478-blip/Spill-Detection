@@ -1,6 +1,7 @@
 rasterio
 numpy
 scipy
+pandas
 
 fastapi
 uvicorn[standard]

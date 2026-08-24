@@ -65,7 +65,7 @@ class SpillDetectionResponse(BaseModel):
     Complete response returned by the
     spill detection/characterization module.
     """
-
+    incident_id: str
     spill_id: str
 
     spill_detected: bool

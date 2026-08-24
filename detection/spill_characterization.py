@@ -93,11 +93,15 @@ def detect_spill(
         # ============================================================
         # 5. HANDLE NO-SPILL CASE
         # ============================================================
+                
+        import uuid
 
+        spi  = f"SPILL-{uuid.uuid4().hex.upper()}"
         if spill_pixels == 0:
 
             return SpillDetectionResponse(
-                spill_id=request.spill_id,
+                incident_id= "",
+                spill_id=spi,
                 spill_detected=False,
                 detection_timestamp=(request.image_timestamp),
                 confidence_score=None,
@@ -278,7 +282,8 @@ def detect_spill(
         # ============================================================
 
         response = SpillDetectionResponse(
-            spill_id=request.spill_id,
+            incident_id="",
+            spill_id=spi,
             spill_detected=True,
             detection_timestamp=(request.image_timestamp),
             # Current prototype receives a mask.
@@ -298,7 +303,8 @@ def detect_spill(
     except Exception as e:
         logging.error("Error in spill char.", e)
         result = SpillDetectionResponse(
-            spill_id=request.spill_id,
+            incident_id="",
+            spill_id=spi,
             area_km2=0.0,
             bounding_box=BoundingBox(width_km=0.0, height_km=0.0),
             centroid=centroid,

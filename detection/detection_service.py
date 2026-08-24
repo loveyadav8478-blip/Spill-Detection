@@ -4,6 +4,7 @@ import logging
 
 from fastapi import UploadFile
 from pyparsing import null_debug_action
+import uuid
 
 from detection.upload_service import save_uploaded_spill_files
 from detection.file_cleanup import delete_file
@@ -19,7 +20,6 @@ from detection.spill_characterization import detect_spill
 
 
 async def run_spill_detection(
-    spill_id: str,
     image_timestamp: datetime,
     satellite_image: UploadFile,
     spill_mask: UploadFile,
@@ -42,7 +42,6 @@ async def run_spill_detection(
 
         # Build detection request
         request = SpillDetectionRequest(
-            spill_id=spill_id,
             image_path=image_path,
             mask_path=mask_path,
             image_timestamp=image_timestamp,
@@ -54,10 +53,11 @@ async def run_spill_detection(
     except Exception as e:
         logging.error("Error in detection service", e)
         return SpillDetectionResponse(
-            spill_id=request.spill_id,
+            incident_id="",
+            spill_id="",
             detection_timestamp=request.image_timestamp,
             status="FAILED",
-            message="Spill detection failed",
+            message="Spill detection failed and not be saved on db",
             error=str(e),
             spill_detected=False,
             confidence_score=None,

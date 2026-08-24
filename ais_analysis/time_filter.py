@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 def filter_by_time(
     df: pd.DataFrame,
     spill_time,
@@ -11,7 +10,9 @@ def filter_by_time(
     starting from the spill time.
     """
 
-    spill_time = pd.to_datetime(spill_time)
+    spill_time = pd.to_datetime(
+        spill_time
+    )
 
     end_time = spill_time + pd.Timedelta(
         minutes=duration_minutes
