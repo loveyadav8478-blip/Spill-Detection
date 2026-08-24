@@ -23,6 +23,16 @@ from shapely.geometry import Point, LineString
 from detection.detection_service import run_spill_detection
 from detection.SpillDetectionResponse import SpillDetectionResponse
 
+from fastapi import FastAPI, HTTPException
+
+from data.schemas import (
+    AISFilterInput,
+    AISFilterOutput,
+    AISScoreOutput
+)
+
+from ais_analysis.pipeline import run_ais_pipeline
+
 from data.schemas import (
     DetectionOutput,
     GeoJSONPolygon,
@@ -159,3 +169,28 @@ async def test_ais_pipeline():
     )
 
     return result.to_dict(orient="records")
+
+
+@app.post("/ais/analyze")
+def analyze_ais(
+    input_data: AISFilterInput
+):
+    try:
+
+        filter_output, score_output = (
+            run_ais_pipeline(
+                input_data=input_data
+            )
+        )
+
+        return {
+            "filter_output": filter_output,
+            "score_output": score_output
+        }
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
