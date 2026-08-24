@@ -22,6 +22,7 @@ from PIL import Image
 from shapely.geometry import Point, LineString
 from detection.detection_service import run_spill_detection
 from detection.SpillDetectionResponse import SpillDetectionResponse
+from ais_analysis.pipeline import run_ais_pipeline
 
 from data.schemas import (
     DetectionOutput,
