@@ -275,8 +275,8 @@ async def run_full_spill_pipeline(
         hindcast_input = HindcastInput(
             spill_id=detection_res.spill_id,
             observed_position=LatLon(
-                lat=detection_res.centroid_lat,
-                lon=detection_res.centroid_lon
+                lat=detection_res.centroid.latitude,
+                lon=detection_res.centroid.longitude
             ),
             observation_time=detection_res.detection_timestamp,
         )
