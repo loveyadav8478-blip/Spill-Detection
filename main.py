@@ -15,6 +15,11 @@ import io
 import math
 from datetime import datetime, timedelta
 
+from sqlalchemy import text
+from db import engine
+from db import SessionLocal
+from alchemy import Incident, ModuleResult
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, Form, File
@@ -44,6 +49,29 @@ from data.schemas import (
 app = FastAPI(title="Oil Spill Detection & Attribution API")
 
 EARTH_RADIUS_KM = 6371.0
+
+@app.on_event("startup")
+def test_database_connection():
+
+    try:
+
+        with engine.connect() as connection:
+
+            result = connection.execute(
+                text("SELECT 1")
+            )
+
+            print(
+                "Database connected:",
+                result.scalar()
+            )
+
+    except Exception as e:
+
+        print(
+            "Database connection failed:",
+            e
+        )
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -131,26 +159,109 @@ async def health():
 
 
 
-@app.post("/spill-detection/upload", response_model=SpillDetectionResponse)
+@app.post(
+    "/spill-detection/upload",
+    response_model=SpillDetectionResponse
+)
 async def upload_spill_detection(
-    spill_id: str = Form(...),
     image_timestamp: datetime = Form(...),
     satellite_image: UploadFile = File(...),
     spill_mask: UploadFile = File(...),
 ):
-    return await run_spill_detection(
-        spill_id=spill_id,
+    # Run existing detection logic
+    res = await run_spill_detection(
         image_timestamp=image_timestamp,
         satellite_image=satellite_image,
         spill_mask=spill_mask,
     )
 
+    session = SessionLocal()
 
-@app.post("/hindcast/rundrifts", response_model=HindcastOutput)
-async def run_hindcast_service(payload: HindcastInput):
-    repsonse = run_hindcast(payload)
-    
-    return repsonse
+    try:
+
+        # ---------------------------------------------
+        # 1. Create Incident
+        # ---------------------------------------------
+
+        incident = Incident(
+            spill_id=res.spill_id,
+            incident_code=f"INC-{res.spill_id}",
+            status=res.status,
+        )
+
+        session.add(incident)
+
+        # ---------------------------------------------
+        # 2. Save Detection Result
+        # ---------------------------------------------
+
+        module_result = ModuleResult(
+            spill_id=res.spill_id,
+            module_name="detection",
+            result=res.model_dump(mode="json"),
+        )
+
+        session.add(module_result)
+
+        # ---------------------------------------------
+        # 3. Commit
+        # ---------------------------------------------
+
+        session.commit()
+
+        # ---------------------------------------------
+        # 4. Return existing detection response
+        # ---------------------------------------------
+
+        return res
+
+    except Exception:
+        session.rollback()
+        raise
+
+    finally:
+        session.close()
+
+
+@app.post(
+    "/hindcast/rundrifts",
+    response_model=HindcastOutput
+)
+async def run_hindcast_service(
+    payload: HindcastInput
+):
+    response = run_hindcast(payload)
+
+    session = SessionLocal()
+
+    try:
+
+        # --------------------------------------------------
+        # Save Hindcast Result
+        # --------------------------------------------------
+
+        module_result = ModuleResult(
+            spill_id=payload.spill_id,
+            module_name="hindcast",
+            result=response.model_dump(mode="json"),
+        )
+
+        session.add(module_result)
+
+        # --------------------------------------------------
+        # Commit
+        # --------------------------------------------------
+
+        session.commit()
+
+        return response
+
+    except Exception:
+        session.rollback()
+        raise
+
+    finally:
+        session.close()
 
 
 @app.get("/ais/test-pipeline")

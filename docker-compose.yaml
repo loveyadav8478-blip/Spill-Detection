@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: spill_detection_postgres
+
+    environment:
+      POSTGRES_USER: spill_user
+      POSTGRES_PASSWORD: spill_password
+      POSTGRES_DB: spill_detection
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

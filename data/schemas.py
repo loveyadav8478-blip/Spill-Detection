@@ -130,7 +130,6 @@ class DetectionOutput(BaseModel):
     provenance / file-path fields the incident-tracking layer needs.
     """
 
-    spill_id: str
     spill_detected: bool
     detection_timestamp: datetime
 
