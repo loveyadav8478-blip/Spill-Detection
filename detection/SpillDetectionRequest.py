@@ -11,11 +11,6 @@ class SpillDetectionRequest(BaseModel):
     2. Corresponding oil-spill mask
     """
 
-    spill_id: str = Field(
-        "20200307",
-        description="Unique identifier for the spill incident"
-    )
-
     image_path: str = Field(
         "data/satelite/20200307.tif",
         description="Path to the Sentinel-1 satellite image"
