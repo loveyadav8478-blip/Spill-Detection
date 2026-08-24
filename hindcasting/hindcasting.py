@@ -29,7 +29,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timedelta
 
-from ..data.schemas import (
+from data.schemas import (
     EnvironmentSource,
     EnvironmentVector,
     HindcastInput,
