@@ -408,8 +408,6 @@ def get_prerequisite_data(
         )
 
     finally:
-<<<<<<< HEAD
-=======
         session.close()
 
 
@@ -470,5 +468,4 @@ def get_module_result(
         )
 
     finally:
->>>>>>> origin/main
         session.close()
