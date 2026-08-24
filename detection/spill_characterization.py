@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import numpy as np
 import rasterio
@@ -19,453 +20,269 @@ from detection.SpillDetectionResponse import (
 def detect_spill(
     request: SpillDetectionRequest,
 ) -> SpillDetectionResponse:
-    """
-    Analyze a satellite image and its corresponding
-    oil-spill mask.
+    try:
+        """
+        Analyze a satellite image and its corresponding
+        oil-spill mask.
 
-    Current prototype:
+        Current prototype:
 
-        Sentinel-1 image
-                +
-        Oil-spill mask
-                ↓
-        Geometric characterization
-                ↓
-        SpillDetectionResponse
+            Sentinel-1 image
+                    +
+            Oil-spill mask
+                    ↓
+            Geometric characterization
+                    ↓
+            SpillDetectionResponse
 
-    The mask is currently assumed to be a valid
-    segmentation mask.
+        The mask is currently assumed to be a valid
+        segmentation mask.
 
-    Later, an ML segmentation model can generate
-    the mask automatically.
-    """
+        Later, an ML segmentation model can generate
+        the mask automatically.
+        """
 
-    # ============================================================
-    # 1. READ SATELLITE IMAGE METADATA
-    # ============================================================
+        # ============================================================
+        # 1. READ SATELLITE IMAGE METADATA
+        # ============================================================
 
-    with rasterio.open(
-        request.image_path
-    ) as src:
+        with rasterio.open(request.image_path) as src:
 
-        transform = src.transform
-        crs = src.crs
+            transform = src.transform
+            crs = src.crs
 
-        width = src.width
-        height = src.height
+            width = src.width
+            height = src.height
 
-        pixel_width = abs(
-            transform.a
-        )
+            pixel_width = abs(transform.a)
 
-        pixel_height = abs(
-            transform.e
-        )
+            pixel_height = abs(transform.e)
 
-    # ============================================================
-    # 2. READ SPILL MASK
-    # ============================================================
+        # ============================================================
+        # 2. READ SPILL MASK
+        # ============================================================
 
-    with rasterio.open(
-        request.mask_path
-    ) as src:
+        with rasterio.open(request.mask_path) as src:
 
-        mask = src.read(1)
+            mask = src.read(1)
 
-    # ============================================================
-    # 3. VALIDATE IMAGE/MASK DIMENSIONS
-    # ============================================================
+        # ============================================================
+        # 3. VALIDATE IMAGE/MASK DIMENSIONS
+        # ============================================================
 
-    if mask.shape != (
-        height,
-        width
-    ):
+        if mask.shape != (height, width):
 
-        raise ValueError(
-            "Image and mask dimensions do not match: "
-            f"image={(height, width)}, "
-            f"mask={mask.shape}"
-        )
-
-    # ============================================================
-    # 4. CREATE BINARY SPILL MASK
-    # ============================================================
-
-    # 0  -> background
-    # >0 -> oil spill
-
-    spill = mask > 0
-
-    spill_pixels = int(
-        spill.sum()
-    )
-
-    # ============================================================
-    # 5. HANDLE NO-SPILL CASE
-    # ============================================================
-
-    if spill_pixels == 0:
-
-        return SpillDetectionResponse(
-
-            spill_id=request.spill_id,
-
-            spill_detected=False,
-
-            detection_timestamp=(
-                request.image_timestamp
-            ),
-
-            confidence_score=None,
-
-            spill_pixel_count=0,
-
-            area_km2=0.0,
-
-            perimeter_km=0.0,
-
-            centroid=Centroid(
-                latitude=0.0,
-                longitude=0.0
-            ),
-
-            bounding_box=BoundingBox(
-                width_km=0.0,
-                height_km=0.0
-            ),
-
-            shape=SpillShape(
-                major_axis_km=0.0,
-                minor_axis_km=0.0,
-                eccentricity=0.0
-            ),
-
-            connected_components=(
-                ConnectedComponents(
-                    count=0,
-                    largest_component_pixels=0
-                )
+            raise ValueError(
+                "Image and mask dimensions do not match: "
+                f"image={(height, width)}, "
+                f"mask={mask.shape}"
             )
-        )
 
-    # ============================================================
-    # 6. AREA
-    # ============================================================
+        # ============================================================
+        # 4. CREATE BINARY SPILL MASK
+        # ============================================================
 
-    pixel_area_m2 = (
-        pixel_width *
-        pixel_height
-    )
+        # 0  -> background
+        # >0 -> oil spill
 
-    area_km2 = (
-        spill_pixels *
-        pixel_area_m2 /
-        1_000_000
-    )
+        spill = mask > 0
 
-    # ============================================================
-    # 7. GET SPILL PIXEL COORDINATES
-    # ============================================================
+        spill_pixels = int(spill.sum())
 
-    rows, cols = np.where(
-        spill
-    )
+        # ============================================================
+        # 5. HANDLE NO-SPILL CASE
+        # ============================================================
 
-    xs, ys = rasterio.transform.xy(
-        transform,
-        rows,
-        cols,
-        offset="center"
-    )
+        if spill_pixels == 0:
 
-    xs = np.asarray(xs)
-    ys = np.asarray(ys)
-
-    # ============================================================
-    # 8. CENTROID
-    # ============================================================
-
-    centroid_x = float(
-        np.mean(xs)
-    )
-
-    centroid_y = float(
-        np.mean(ys)
-    )
-
-    # Convert from satellite CRS to WGS84
-    lon, lat = warp_transform(
-        crs,
-        "EPSG:4326",
-        [centroid_x],
-        [centroid_y]
-    )
-
-    centroid = Centroid(
-        latitude=round(
-            float(lat[0]),
-            6
-        ),
-
-        longitude=round(
-            float(lon[0]),
-            6
-        )
-    )
-
-    # ============================================================
-    # 9. BOUNDING BOX
-    # ============================================================
-
-    bbox_width_km = (
-        max(xs) -
-        min(xs)
-    ) / 1000
-
-    bbox_height_km = (
-        max(ys) -
-        min(ys)
-    ) / 1000
-
-    bounding_box = BoundingBox(
-        width_km=round(
-            bbox_width_km,
-            4
-        ),
-
-        height_km=round(
-            bbox_height_km,
-            4
-        )
-    )
-
-    # ============================================================
-    # 10. CONNECTED COMPONENTS
-    # ============================================================
-
-    labels, component_count = (
-        ndimage.label(spill)
-    )
-
-    component_sizes = np.bincount(
-        labels.ravel()
-    )[1:]
-
-    largest_component = (
-        int(component_sizes.max())
-        if len(component_sizes)
-        else 0
-    )
-
-    connected_components = (
-        ConnectedComponents(
-
-            count=int(
-                component_count
-            ),
-
-            largest_component_pixels=(
-                largest_component
+            return SpillDetectionResponse(
+                spill_id=request.spill_id,
+                spill_detected=False,
+                detection_timestamp=(request.image_timestamp),
+                confidence_score=None,
+                spill_pixel_count=0,
+                area_km2=0.0,
+                perimeter_km=0.0,
+                centroid=Centroid(latitude=0.0, longitude=0.0),
+                bounding_box=BoundingBox(width_km=0.0, height_km=0.0),
+                shape=SpillShape(
+                    major_axis_km=0.0, minor_axis_km=0.0, eccentricity=0.0
+                ),
+                connected_components=(
+                    ConnectedComponents(count=0, largest_component_pixels=0)
+                ),
             )
-        )
-    )
 
-    # ============================================================
-    # 11. APPROXIMATE PERIMETER
-    # ============================================================
+        # ============================================================
+        # 6. AREA
+        # ============================================================
 
-    padded = np.pad(
-        spill,
-        1,
-        constant_values=False
-    )
+        pixel_area_m2 = pixel_width * pixel_height
 
-    spill_int = spill.astype(
-        np.int32
-    )
+        area_km2 = spill_pixels * pixel_area_m2 / 1_000_000
 
-    exposed_edges = (
+        # ============================================================
+        # 7. GET SPILL PIXEL COORDINATES
+        # ============================================================
 
-        spill_int *
-        (~padded[1:-1, :-2])
-        .astype(np.int32)
+        rows, cols = np.where(spill)
 
-        +
+        xs, ys = rasterio.transform.xy(transform, rows, cols, offset="center") 
 
-        spill_int *
-        (~padded[1:-1, 2:])
-        .astype(np.int32)
+        xs = np.asarray(xs)
+        ys = np.asarray(ys)
 
-        +
+        # ============================================================
+        # 8. CENTROID
+        # ============================================================
 
-        spill_int *
-        (~padded[:-2, 1:-1])
-        .astype(np.int32)
+        centroid_x = float(np.mean(xs))
 
-        +
+        centroid_y = float(np.mean(ys))
 
-        spill_int *
-        (~padded[2:, 1:-1])
-        .astype(np.int32)
-    )
+        # Convert from satellite CRS to WGS84
+        lon, lat = warp_transform(crs, "EPSG:4326", [centroid_x], [centroid_y]) 
 
-    perimeter_m = (
-        exposed_edges.sum()
-        *
-        (
-            (
-                pixel_width +
-                pixel_height
-            ) / 2
-        )
-    )
-
-    perimeter_km = (
-        perimeter_m / 1000
-    )
-
-    # ============================================================
-    # 12. PCA SHAPE ANALYSIS
-    # ============================================================
-
-    points = np.column_stack(
-        (
-            xs,
-            ys
-        )
-    )
-
-    # Center the points
-    points -= points.mean(
-        axis=0,
-        keepdims=True
-    )
-
-    if len(points) > 1:
-
-        covariance = np.cov(
-            points,
-            rowvar=False
+        centroid = Centroid(
+            latitude=round(float(lat[0]), 6), longitude=round(float(lon[0]), 6)
         )
 
-        eigenvalues = (
-            np.linalg.eigvalsh(
-                covariance
-            )
+        # ============================================================
+        # 9. BOUNDING BOX
+        # ============================================================
+
+        bbox_width_km = (max(xs) - min(xs)) / 1000
+
+        bbox_height_km = (max(ys) - min(ys)) / 1000
+
+        bounding_box = BoundingBox(
+            width_km=round(bbox_width_km, 4), height_km=round(bbox_height_km, 4)
         )
 
-        # Numerical safety:
-        # covariance eigenvalues should not
-        # theoretically be negative, but floating
-        # point calculations can produce tiny
-        # negative values.
+        # ============================================================
+        # 10. CONNECTED COMPONENTS
+        # ============================================================
 
-        eigenvalues = np.maximum(
-            eigenvalues,
-            0
+        labels, component_count = ndimage.label(spill) 
+
+        component_sizes = np.bincount(labels.ravel())[1:] 
+
+        largest_component = int(component_sizes.max()) if len(component_sizes) else 0
+
+        connected_components = ConnectedComponents(
+            count=int(component_count), largest_component_pixels=(largest_component)
         )
 
-        # Largest → smallest
-        eigenvalues = np.sort(
-            eigenvalues
-        )[::-1]
+        # ============================================================
+        # 11. APPROXIMATE PERIMETER
+        # ============================================================
 
-        # Approximate dimensions using
-        # ±2 standard deviations.
+        padded = np.pad(spill, 1, constant_values=False)
 
-        major_axis_km = (
-            4 *
-            np.sqrt(
-                eigenvalues[0]
-            )
-            / 1000
+        spill_int = spill.astype(np.int32)
+
+        exposed_edges = (
+            spill_int * (~padded[1:-1, :-2]).astype(np.int32)
+            + spill_int * (~padded[1:-1, 2:]).astype(np.int32)
+            + spill_int * (~padded[:-2, 1:-1]).astype(np.int32)
+            + spill_int * (~padded[2:, 1:-1]).astype(np.int32)
         )
 
-        minor_axis_km = (
-            4 *
-            np.sqrt(
-                eigenvalues[1]
-            )
-            / 1000
-        )
+        perimeter_m = exposed_edges.sum() * ((pixel_width + pixel_height) / 2)
 
-        if eigenvalues[0] > 0:
+        perimeter_km = perimeter_m / 1000
 
-            eccentricity = np.sqrt(
-                1 -
-                (
-                    eigenvalues[1] /
-                    eigenvalues[0]
-                )
-            )
+        # ============================================================
+        # 12. PCA SHAPE ANALYSIS
+        # ============================================================
+
+        points = np.column_stack((xs, ys))
+
+        # Center the points
+        points -= points.mean(axis=0, keepdims=True)
+
+        if len(points) > 1:
+
+            covariance = np.cov(points, rowvar=False)
+
+            eigenvalues = np.linalg.eigvalsh(covariance)
+
+            # Numerical safety:
+            # covariance eigenvalues should not
+            # theoretically be negative, but floating
+            # point calculations can produce tiny
+            # negative values.
+
+            eigenvalues = np.maximum(eigenvalues, 0)
+
+            # Largest → smallest
+            eigenvalues = np.sort(eigenvalues)[::-1]
+
+            # Approximate dimensions using
+            # ±2 standard deviations.
+
+            major_axis_km = 4 * np.sqrt(eigenvalues[0]) / 1000
+
+            minor_axis_km = 4 * np.sqrt(eigenvalues[1]) / 1000
+
+            if eigenvalues[0] > 0:
+
+                eccentricity = np.sqrt(1 - (eigenvalues[1] / eigenvalues[0]))
+
+            else:
+
+                eccentricity = 0.0
 
         else:
 
+            major_axis_km = 0.0
+            minor_axis_km = 0.0
             eccentricity = 0.0
 
-    else:
-
-        major_axis_km = 0.0
-        minor_axis_km = 0.0
-        eccentricity = 0.0
-
-    shape = SpillShape(
-
-        major_axis_km=round(
-            major_axis_km,
-            4
-        ),
-
-        minor_axis_km=round(
-            minor_axis_km,
-            4
-        ),
-
-        eccentricity=round(
-            float(eccentricity),
-            6
+        shape = SpillShape(
+            major_axis_km=round(major_axis_km, 4),
+            minor_axis_km=round(minor_axis_km, 4),
+            eccentricity=round(float(eccentricity), 6),
         )
-    )
 
-    # ============================================================
-    # 13. BUILD RESPONSE
-    # ============================================================
+        # ============================================================
+        # 13. BUILD RESPONSE
+        # ============================================================
 
-    response = SpillDetectionResponse(
-
-        spill_id=request.spill_id,
-
-        spill_detected=True,
-
-        detection_timestamp=(
-            request.image_timestamp
-        ),
-
-        # Current prototype receives a mask.
-        # It does not generate an ML confidence.
-        confidence_score=None,
-
-        spill_pixel_count=spill_pixels,
-
-        area_km2=round(
-            area_km2,
-            4
-        ),
-
-        perimeter_km=round(
-            perimeter_km,
-            4
-        ),
-
-        centroid=centroid,
-
-        bounding_box=bounding_box,
-
-        shape=shape,
-
-        connected_components=(
-            connected_components
+        response = SpillDetectionResponse(
+            spill_id=request.spill_id,
+            spill_detected=True,
+            detection_timestamp=(request.image_timestamp),
+            # Current prototype receives a mask.
+            # It does not generate an ML confidence.
+            confidence_score=None,
+            spill_pixel_count=spill_pixels,
+            area_km2=round(area_km2, 4),
+            perimeter_km=round(perimeter_km, 4),
+            centroid=centroid,
+            bounding_box=bounding_box,
+            shape=shape,
+            connected_components=(connected_components)
         )
-    )
 
-    return response
+        return response
+
+    except Exception as e:
+        logging.error("Error in spill char.", e)
+        result = SpillDetectionResponse(
+            spill_id=request.spill_id,
+            area_km2=0.0,
+            bounding_box=BoundingBox(width_km=0.0, height_km=0.0),
+            centroid=centroid,
+            confidence_score=None,
+            connected_components=connected_components,
+            detection_timestamp=request.image_timestamp,
+            perimeter_km=0.0,
+            shape=SpillShape(major_axis_km=0.0, minor_axis_km=0.0, eccentricity=0.0),
+            spill_detected=False,
+            spill_pixel_count=0,
+            status="FAILED",
+            message="Failed to run detection",
+            error=str(e),
+        )
+        return result

@@ -94,3 +94,17 @@ class SpillDetectionResponse(BaseModel):
     shape: SpillShape
 
     connected_components: ConnectedComponents
+    status: str = Field(
+    default="SUCCESS",
+    description="Processing status of the spill detection request"
+    )
+
+    message: str = Field(
+        default="Spill detection completed successfully",
+        description="Human-readable processing message"
+    )
+
+    error: Optional[str] = Field(
+        default=None,
+        description="Error details when processing fails"
+    )
