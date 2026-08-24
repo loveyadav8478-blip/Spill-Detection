@@ -2,7 +2,7 @@ rasterio
 numpy
 scipy
 pandas
-
+sqlalchemy
 fastapi
 uvicorn[standard]
 pydantic
