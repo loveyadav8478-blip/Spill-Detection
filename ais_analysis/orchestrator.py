@@ -28,9 +28,7 @@ def run_ais_after_hindcast(
         # Optional for future advanced analysis
         backward_path=(
             hindcast_output.backward_path
-        ),
-
-        raw_ais_pings=raw_ais_pings
+        )
     )
 
     filter_output, ais_score_output = (

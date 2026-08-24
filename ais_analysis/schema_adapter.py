@@ -10,13 +10,28 @@ from data.schemas import (
     AISFilterOutput,
     AISScoreOutput,
     AnomalyFlags,
-    ScoringWeights
+    ScoringWeights,
 )
 
+MAX_TRAJECTORY_POINTS = 20
 
-def ais_pings_to_dataframe(
-    pings: list[AISPing]
-) -> pd.DataFrame:
+
+def _decimate(points: list, max_points: int) -> list:
+    """Evenly-spaced downsample that always keeps the first and last
+    point - the last point (closest to origin time) matters most for
+    a suspect vessel, so it must never be dropped by truncation."""
+    n = len(points)
+    if n <= max_points:
+        return points
+    if max_points <= 1:
+        return points[:1]
+    indices = sorted(
+        set(round(i * (n - 1) / (max_points - 1)) for i in range(max_points))
+    )
+    return [points[i] for i in indices]
+
+
+def ais_pings_to_dataframe(pings: list[AISPing]) -> pd.DataFrame:
     """
     Convert schema AISPing objects into the same
     DataFrame format expected by the existing
@@ -27,37 +42,32 @@ def ais_pings_to_dataframe(
 
     for ping in pings:
 
-        rows.append({
-            "MMSI": ping.mmsi,
-            "BaseDateTime": ping.base_date_time,
-            "LAT": ping.lat,
-            "LON": ping.lon,
-            "SOG": ping.sog,
-            "COG": ping.cog,
-            "Heading": ping.heading,
-            "VesselName": ping.vessel_name,
-            "IMO": ping.imo,
-            "CallSign": ping.call_sign,
-            "VesselType": ping.vessel_type,
-            "Status": ping.status,
-            "Length": ping.length,
-            "Width": ping.width,
-            "Draft": ping.draft,
-            "Cargo": ping.cargo,
-            "TransceiverClass": ping.transceiver_class
-        })
+        rows.append(
+            {
+                "MMSI": ping.mmsi,
+                "BaseDateTime": ping.base_date_time,
+                "LAT": ping.lat,
+                "LON": ping.lon,
+                "SOG": ping.sog,
+                "COG": ping.cog,
+                "Heading": ping.heading,
+                "VesselName": ping.vessel_name,
+                "IMO": ping.imo,
+                "CallSign": ping.call_sign,
+                "VesselType": ping.vessel_type,
+                "Status": ping.status,
+                "Length": ping.length,
+                "Width": ping.width,
+                "Draft": ping.draft,
+                "Cargo": ping.cargo,
+                "TransceiverClass": ping.transceiver_class,
+            }
+        )
 
     return pd.DataFrame(rows)
 
 
-def dataframe_to_filtered_vessels(
-    df: pd.DataFrame
-) -> list[FilteredVessel]:
-    """
-    Convert filtered AIS DataFrame into
-    FilteredVessel schema objects.
-    """
-
+def dataframe_to_filtered_vessels(df: pd.DataFrame) -> list[FilteredVessel]:
     vessels = []
 
     if df.empty:
@@ -71,39 +81,33 @@ def dataframe_to_filtered_vessels(
 
             trajectory_points.append(
                 TimedPoint(
-                    lat=float(row["LAT"]),
-                    lon=float(row["LON"]),
-                    t=row["BaseDateTime"]
+                    lat=float(row["LAT"]), lon=float(row["LON"]), t=row["BaseDateTime"]
                 )
             )
+
+        trajectory_points = _decimate(
+            trajectory_points, MAX_TRAJECTORY_POINTS
+        )  # ADD THIS LINE
 
         vessels.append(
             FilteredVessel(
                 mmsi=str(mmsi),
                 trajectory_points=trajectory_points,
                 passed_coarse_filter=True,
-
-                # Current AIS logic does not use
-                # backward_path yet.
-                passed_trajectory_filter=False
+                passed_trajectory_filter=False,
             )
         )
 
     return vessels
 
 
-def get_vessel_metadata(
-    df: pd.DataFrame,
-    mmsi: str
-) -> dict:
+def get_vessel_metadata(df: pd.DataFrame, mmsi: str) -> dict:
     """
     Extract vessel metadata from the existing
     filtered AIS DataFrame.
     """
 
-    vessel_rows = df[
-        df["MMSI"].astype(str) == str(mmsi)
-    ]
+    vessel_rows = df[df["MMSI"].astype(str) == str(mmsi)]
 
     if vessel_rows.empty:
         return {}
@@ -122,25 +126,17 @@ def get_vessel_metadata(
         return value
 
     return {
-        "vessel_name": optional_value(
-            "VesselName"
-        ),
+        "vessel_name": optional_value("VesselName"),
         "imo": optional_value("IMO"),
-        "call_sign": optional_value(
-            "CallSign"
-        ),
-        "vessel_type": optional_value(
-            "VesselType"
-        ),
+        "call_sign": optional_value("CallSign"),
+        "vessel_type": optional_value("VesselType"),
         "length": optional_value("Length"),
-        "width": optional_value("Width")
+        "width": optional_value("Width"),
     }
 
 
 def ranked_dataframe_to_scored_vessels(
-    ranked_df: pd.DataFrame,
-    filtered_df: pd.DataFrame,
-    origin_estimate: TimedPoint
+    ranked_df: pd.DataFrame, filtered_df: pd.DataFrame, origin_estimate: TimedPoint
 ) -> list[ScoredVessel]:
     """
     Convert the output of the existing
@@ -157,10 +153,7 @@ def ranked_dataframe_to_scored_vessels(
 
         mmsi = str(row["MMSI"])
 
-        vessel_df = filtered_df[
-            filtered_df["MMSI"].astype(str)
-            == mmsi
-        ].sort_values(
+        vessel_df = filtered_df[filtered_df["MMSI"].astype(str) == mmsi].sort_values(
             "BaseDateTime"
         )
 
@@ -172,36 +165,23 @@ def ranked_dataframe_to_scored_vessels(
                 TimedPoint(
                     lat=float(ping["LAT"]),
                     lon=float(ping["LON"]),
-                    t=ping["BaseDateTime"]
+                    t=ping["BaseDateTime"],
                 )
             )
 
-        metadata = get_vessel_metadata(
-            filtered_df,
-            mmsi
-        )
+        trajectory_points = _decimate(trajectory_points, MAX_TRAJECTORY_POINTS)
+
+        metadata = get_vessel_metadata(filtered_df, mmsi)
 
         # Calculate time difference using the
         # existing vessel data.
         if not vessel_df.empty:
 
-            first_seen = pd.to_datetime(
-                vessel_df[
-                    "BaseDateTime"
-                ].min()
-            )
+            first_seen = pd.to_datetime(vessel_df["BaseDateTime"].min())
 
-            origin_time = pd.to_datetime(
-                origin_estimate.t
-            )
+            origin_time = pd.to_datetime(origin_estimate.t)
 
-            time_delta_minutes = abs(
-                (
-                    first_seen
-                    - origin_time
-                ).total_seconds()
-                / 60
-            )
+            time_delta_minutes = abs((first_seen - origin_time).total_seconds() / 60)
 
         else:
             time_delta_minutes = 0.0
@@ -220,89 +200,44 @@ def ranked_dataframe_to_scored_vessels(
         anomaly = AnomalyFlags(
             ais_gap_detected=False,
             gap_duration_min=0.0,
-
             speed_deviation_score=0.0,
             course_deviation_score=0.0,
-
-            loitering_detected=False
+            loitering_detected=False,
         )
 
         explanation = [
-            (
-                f"Minimum distance to spill: "
-                f"{float(row['min_distance_km']):.2f} km"
-            ),
-            (
-                f"Average distance to spill: "
-                f"{float(row['avg_distance_km']):.2f} km"
-            ),
-            (
-                f"AIS records near spill: "
-                f"{int(row['records'])}"
-            ),
-            (
-                f"Existing candidate confidence: "
-                f"{float(row['confidence']):.2f}%"
-            )
+            (f"Minimum distance to spill: " f"{float(row['min_distance_km']):.2f} km"),
+            (f"Average distance to spill: " f"{float(row['avg_distance_km']):.2f} km"),
+            (f"AIS records near spill: " f"{int(row['records'])}"),
+            (f"Existing candidate confidence: " f"{float(row['confidence']):.2f}%"),
         ]
 
         scored_vessels.append(
             ScoredVessel(
                 mmsi=mmsi,
-
-                vessel_name=metadata.get(
-                    "vessel_name"
-                ),
+                vessel_name=metadata.get("vessel_name"),
                 imo=metadata.get("imo"),
-                call_sign=metadata.get(
-                    "call_sign"
-                ),
-                vessel_type=metadata.get(
-                    "vessel_type"
-                ),
+                call_sign=metadata.get("call_sign"),
+                vessel_type=metadata.get("vessel_type"),
                 length=metadata.get("length"),
                 width=metadata.get("width"),
-
                 trajectory_points=trajectory_points,
-
-                min_distance_to_origin_km=float(
-                    row["min_distance_km"]
-                ),
-
-                time_delta_to_origin_min=float(
-                    time_delta_minutes
-                ),
-
+                min_distance_to_origin_km=float(row["min_distance_km"]),
+                time_delta_to_origin_min=float(time_delta_minutes),
                 anomaly=anomaly,
-
                 # Existing logic mapping
-                proximity_score=float(
-                    row["distance_score"]
-                ),
-
-                temporal_score=float(
-                    row["presence_score"]
-                ),
-
+                proximity_score=float(row["distance_score"]),
+                temporal_score=float(row["presence_score"]),
                 # No trajectory scoring in the
                 # current AIS algorithm.
                 trajectory_score=0.0,
-
-                behavior_score=float(
-                    row["avg_distance_score"]
-                ),
-
+                behavior_score=float(row["avg_distance_score"]),
                 # Existing confidence is 0-100.
                 # Unit expects 0-1.
-                final_suspect_score=float(
-                    row["confidence"]
-                ) / 100,
-
+                final_suspect_score=float(row["confidence"]) / 100,
                 rank=int(row["rank"]),
-
                 explanation=explanation,
-
-                weights_used=ScoringWeights()
+                weights_used=ScoringWeights(),
             )
         )
 
@@ -310,22 +245,21 @@ def ranked_dataframe_to_scored_vessels(
 
 
 def build_filter_output(
-    spill_id: str,
-    filtered_df: pd.DataFrame
+    spill_id: str, filtered_df: pd.DataFrame, ranked_df: pd.DataFrame
 ) -> AISFilterOutput:
     """
     Build AISFilterOutput.
     """
+    top_mmsi = ranked_df["MMSI"].astype(str).tolist()
+    top_filtered_df = filtered_df[filtered_df["MMSI"].astype(str).isin(top_mmsi)]
 
-    candidate_vessels = (
-        dataframe_to_filtered_vessels(
-            filtered_df
-        )
-    )
+    candidate_vessels = dataframe_to_filtered_vessels(top_filtered_df)
+    print("ranked MMSI types:", ranked_df["MMSI"].apply(type).unique())
+    print("filtered MMSI types:", filtered_df["MMSI"].apply(type).unique())
 
     return AISFilterOutput(
         spill_id=spill_id,
-        candidate_vessels=candidate_vessels
+        candidate_vessels=candidate_vessels,  # no more [:4] slice needed - already exactly the ranked set
     )
 
 
@@ -333,21 +267,14 @@ def build_score_output(
     spill_id: str,
     ranked_df: pd.DataFrame,
     filtered_df: pd.DataFrame,
-    origin_estimate: TimedPoint
+    origin_estimate: TimedPoint,
 ) -> AISScoreOutput:
     """
     Build AISScoreOutput.
     """
 
-    ranked_vessels = (
-        ranked_dataframe_to_scored_vessels(
-            ranked_df=ranked_df,
-            filtered_df=filtered_df,
-            origin_estimate=origin_estimate
-        )
+    ranked_vessels = ranked_dataframe_to_scored_vessels(
+        ranked_df=ranked_df, filtered_df=filtered_df, origin_estimate=origin_estimate
     )
 
-    return AISScoreOutput(
-        spill_id=spill_id,
-        ranked_vessels=ranked_vessels
-    )
+    return AISScoreOutput(spill_id=spill_id, ranked_vessels=ranked_vessels)
