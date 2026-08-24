@@ -368,7 +368,7 @@ def get_prerequisite_data(
     """
 
     # Map what data is required for each target module
-    dependency_map = {"hindcast": "detection", "ais": "hindcast"}
+    dependency_map = {"hindcast": "detection", "ais": "hindcast", "detection":"detection"}
 
     if target_module not in dependency_map:
         raise HTTPException(
