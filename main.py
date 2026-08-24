@@ -51,7 +51,15 @@ from data.schemas import (
 app = FastAPI(title="Oil Spill Detection & Attribution API")
 
 EARTH_RADIUS_KM = 6371.0
+from fastapi.middleware.cors import CORSMiddleware
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def test_database_connection():

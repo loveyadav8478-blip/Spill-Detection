@@ -54,7 +54,7 @@ async def run_spill_detection(
         logging.error("Error in detection service", e)
         return SpillDetectionResponse(
             incident_id="",
-            spill_id="",
+            spill_id=spill_id,
             detection_timestamp=request.image_timestamp,
             status="FAILED",
             message="Spill detection failed and not be saved on db",
