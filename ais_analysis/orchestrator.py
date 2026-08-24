@@ -1,4 +1,4 @@
-from schema import (
+from data.schemas import (
     AISFilterInput,
     DashboardResponse
 )
