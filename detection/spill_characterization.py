@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from typing import Tuple, cast
 
 import numpy as np
 import rasterio
@@ -127,7 +128,25 @@ def detect_spill(
 
         rows, cols = np.where(spill)
 
-        xs, ys = rasterio.transform.xy(transform, rows, cols, offset="center") 
+        rows, cols = np.where(spill)
+
+        rows_float = rows.astype(np.float64)
+        cols_float = cols.astype(np.float64)
+
+        xs = (
+            transform.c
+            + (cols_float + 0.5) * transform.a
+            + (rows_float + 0.5) * transform.b
+        )
+
+        ys = (
+            transform.f
+            + (cols_float + 0.5) * transform.d
+            + (rows_float + 0.5) * transform.e
+        )
+
+        xs = np.asarray(xs, dtype=np.float64)
+        ys = np.asarray(ys, dtype=np.float64)
 
         xs = np.asarray(xs)
         ys = np.asarray(ys)
@@ -141,7 +160,10 @@ def detect_spill(
         centroid_y = float(np.mean(ys))
 
         # Convert from satellite CRS to WGS84
-        lon, lat = warp_transform(crs, "EPSG:4326", [centroid_x], [centroid_y]) 
+        transform_result = warp_transform(crs, "EPSG:4326", [centroid_x], [centroid_y])
+
+        lon = list(transform_result[0])
+        lat = list(transform_result[1])
 
         centroid = Centroid(
             latitude=round(float(lat[0]), 6), longitude=round(float(lon[0]), 6)
@@ -163,9 +185,15 @@ def detect_spill(
         # 10. CONNECTED COMPONENTS
         # ============================================================
 
-        labels, component_count = ndimage.label(spill) 
+        label_result = ndimage.label(spill)
 
-        component_sizes = np.bincount(labels.ravel())[1:] 
+        labels, component_count = cast(Tuple[np.ndarray, int], label_result)
+
+        labels = np.asarray(labels, dtype=np.int64)
+
+        component_count = int(component_count)
+
+        component_sizes = np.bincount(labels.ravel())[1:]
 
         largest_component = int(component_sizes.max()) if len(component_sizes) else 0
 
@@ -262,7 +290,7 @@ def detect_spill(
             centroid=centroid,
             bounding_box=bounding_box,
             shape=shape,
-            connected_components=(connected_components)
+            connected_components=(connected_components),
         )
 
         return response
