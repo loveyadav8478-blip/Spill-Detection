@@ -1,3 +1,9 @@
+from __future__ import annotations
+"""
+TODO 1. finalization of time range of searching and all
+TODO 2. propagation of weather data as per the walk path stpes time period
+"""
+
 """
 Hindcasting / drift module.
 
@@ -24,7 +30,6 @@ Both simplifications are stated explicitly in the output via
 `is_simplified_model` / `model_notes`.
 """
 
-from __future__ import annotations
 
 import math
 from datetime import datetime, timedelta
