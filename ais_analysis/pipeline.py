@@ -78,7 +78,7 @@ def run_ais_pipeline(
 
     origin = input_data.origin_estimate
 
-    spill_timestamp = origin.timestamp
+    spill_timestamp = origin.t
     spill_lat = origin.lat
     spill_lon = origin.lon
 

@@ -73,7 +73,7 @@ def dataframe_to_filtered_vessels(
                 TimedPoint(
                     lat=float(row["LAT"]),
                     lon=float(row["LON"]),
-                    timestamp=row["BaseDateTime"]
+                    t=row["BaseDateTime"]
                 )
             )
 
@@ -172,7 +172,7 @@ def ranked_dataframe_to_scored_vessels(
                 TimedPoint(
                     lat=float(ping["LAT"]),
                     lon=float(ping["LON"]),
-                    timestamp=ping["BaseDateTime"]
+                    t=ping["BaseDateTime"]
                 )
             )
 
@@ -192,7 +192,7 @@ def ranked_dataframe_to_scored_vessels(
             )
 
             origin_time = pd.to_datetime(
-                origin_estimate.timestamp
+                origin_estimate.t
             )
 
             time_delta_minutes = abs(
