@@ -80,7 +80,6 @@ class DetectionRequest(BaseModel):
     FastAPI route, not in this model - this covers everything else the
     endpoint needs alongside them.
     """
-    spill_id: str
     source_image_filename: str
     mask_image_filename: str
     image_timestamp: datetime

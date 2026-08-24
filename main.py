@@ -42,6 +42,14 @@ from data.schemas import (
 
 app = FastAPI(title="Oil Spill Detection & Attribution API")
 
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 EARTH_RADIUS_KM = 6371.0
 
 # ---------------------------------------------------------------------------
@@ -155,7 +163,7 @@ async def test_ais_pipeline():
         spill_lon=-89.022008,
         duration_minutes=60,
         radius_km=34,
-        top_n=4
+        top_n=4 
     )
 
     return result.to_dict(orient="records")
