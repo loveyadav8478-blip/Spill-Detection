@@ -2,12 +2,18 @@ import pandas as pd
 import numpy as np
 
 
-def haversine_distance(lat1, lon1, lat2, lon2):
+def haversine_distance(
+    lat1,
+    lon1,
+    lat2,
+    lon2
+):
     """
-    Calculate distance between two geographic points in kilometers.
+    Calculate distance between two geographic points
+    in kilometers.
     """
 
-    R = 6371  # Earth radius in kilometers
+    R = 6371
 
     lat1 = np.radians(lat1)
     lon1 = np.radians(lon1)
