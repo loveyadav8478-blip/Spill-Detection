@@ -4,11 +4,7 @@ import math
 from pathlib import Path
 
 """
-Rewrite run_hindcast() to: (a) add a forward pass,
-(b) fix the origin logic to be explicit about being a lookback-boundary estimate not a "confidence-based" estimate, 
-(c) emit real timestamps, 
-(d) match your locked JSON schema field names,
-(e) be a plain function callable in-process, not a CLI script.
+basic hindcast base test files
 """
 EARTH_RADIUS_KM = 6371.0
 
@@ -188,10 +184,6 @@ def run_hindcast(
 
         candidates.append(candidate)
 
-    # Prototype assumption:
-    # The origin is the furthest reconstructed point.
-    # This will later be replaced by a probability/
-    # physics-based origin estimation method.
     estimated_origin = candidates[-1]
 
     return {
@@ -227,7 +219,7 @@ def run_hindcast(
         }
     }
 
-
+#for testing, run directly
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(

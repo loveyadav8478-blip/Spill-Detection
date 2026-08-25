@@ -1,29 +1,7 @@
 """
-Hindcast service - identical core physics to hindcasting.py, but
-fetch_current/fetch_wind now read from the 14 pre-fetched real
-Open-Meteo records (hindcast_env_seed.json) instead of a static
-constant or synthetic grid.
+data here is mapped and fetched form real apis
 
-Determinism: given the same observation_time, this ALWAYS returns the
-same record - no randomness at call time. Matching is done by nearest
-hour-of-day (not nearest absolute date), because the 14 seed records
-only span ~44 real hours (2026-08-24/25), while requested spills can
-be from any date (e.g. a 2020 test image). Matching by absolute date
-distance would be meaningless across that gap; matching by hour-of-day
-treats the sample as "roughly what conditions look like at this time
-of day in this region" - the honest way to reuse a small real sample
-across arbitrary dates.
-
-Position: observed_position (lat/lon) is passed straight through from
-HindcastInput - it may originate from DetectionOutput.centroid via the
-orchestrator, or be supplied directly (e.g. by the frontend for manual
-testing). This module doesn't care where it came from. It IS used for
-the actual drift-walk math (destination_point). It is NOT used to
-spatially match the environmental lookup - the 14 seed records were
-fetched for one representative region only, so environmental data is
-matched by time-of-day alone, not by proximity to the requested
-position. This is a disclosed simplification: results are only
-representative if the requested spill is near that sampled region.
+Determinism- here it maps by closest hour time of the day
 """
 
 from __future__ import annotations
@@ -52,9 +30,7 @@ _SEED_DATA_PATH = Path(__file__).parent / "hindcast_data.json"
 _seed_records_cache: list[dict[str, Any]] | None = None
 
 
-# ---------------------------------------------------------------------------
-# Seed data loading + deterministic nearest-hour-of-day matching
-# ---------------------------------------------------------------------------
+# fetch seeded data and map it
 
 def _load_seed_records() -> list[dict[str, Any]]:
     global _seed_records_cache
@@ -163,9 +139,7 @@ def fetch_wind(position: LatLon, time: datetime) -> EnvironmentVector:
     )
 
 
-# ---------------------------------------------------------------------------
-# Core vector math - unchanged from hindcasting.py
-# ---------------------------------------------------------------------------
+# core vector maths
 
 def destination_point(lat: float, lon: float, distance_km: float, bearing_deg: float) -> tuple[float, float]:
     """
@@ -243,9 +217,7 @@ def _walk_path(
     return path
 
 
-# ---------------------------------------------------------------------------
-# Orchestrator - same signature/contract as hindcasting.py's run_hindcast
-# ---------------------------------------------------------------------------
+# run properly
 
 def run_hindcast(
     hindcast_input: HindcastInput,

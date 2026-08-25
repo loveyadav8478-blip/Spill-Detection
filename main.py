@@ -1,12 +1,6 @@
 """
 Basic FastAPI entrypoint wiring the full pipeline:
 detection -> hindcast -> AIS filter -> AIS score -> dashboard
-
-Each stage is implemented as a plain function (not a network call) so the
-whole pipeline runs in-process for the prototype - matches the "modular
-monolith, not distributed microservices" plan.
-
-Run with:  uvicorn main:app --reload
 """
 
 from __future__ import annotations
@@ -58,7 +52,7 @@ EARTH_RADIUS_KM = 6371.0
 @app.on_event("startup")
 def test_database_connection():
     try:
-        # Automatically creates tables if they don't exist yet
+        # create tables if they don't exist yet
         Base.metadata.create_all(bind=engine)
 
         with engine.connect() as connection:
@@ -73,8 +67,7 @@ def save_or_update_module_result(
     session: Session, spill_id: str, module_name: str, payload: dict
 ):
     """
-    Inserts a new ModuleResult or updates the existing one if
-    (spill_id, module_name) already exists in PostgreSQL.
+    if exists then update else add module
     """
     record = (
         session.query(ModuleResult)
@@ -93,9 +86,7 @@ def save_or_update_module_result(
         session.add(record)
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+# routes
 
 
 @app.get("/")
@@ -119,9 +110,7 @@ async def upload_spill_detection(
     session = SessionLocal()
 
     try:
-        # ---------------------------------------------
-        # 1. Create or Update Incident
-        # ---------------------------------------------
+        # create or update in db
         incident = Incident(
             spill_id=res.spill_id,
             incident_code=f"INC-{res.spill_id}",
@@ -129,9 +118,6 @@ async def upload_spill_detection(
         )
         session.merge(incident)
 
-        # ---------------------------------------------
-        # 2. Save or Update Detection Result
-        # ---------------------------------------------
         save_or_update_module_result(
             session=session,
             spill_id=res.spill_id,
@@ -139,14 +125,8 @@ async def upload_spill_detection(
             payload=res.model_dump(mode="json"),
         )
 
-        # ---------------------------------------------
-        # 3. Commit
-        # ---------------------------------------------
         session.commit()
 
-        # ---------------------------------------------
-        # 4. Return detection response
-        # ---------------------------------------------
         return res
 
     except Exception:
@@ -164,9 +144,6 @@ async def run_hindcast_service(payload: HindcastInput):
     session = SessionLocal()
 
     try:
-        # --------------------------------------------------
-        # Save or Update Hindcast Result in PostgreSQL
-        # --------------------------------------------------
         save_or_update_module_result(
             session=session,
             spill_id=payload.spill_id,
@@ -241,15 +218,11 @@ async def run_full_spill_pipeline(
     trajectory_max_distance_km: float = Form(5.0),
 ):
     """
-    Runs Detection -> Hindcast -> AIS Analysis sequentially in a single call.
-    Handles upserts and pipeline data persistence cleanly.
+    Runs Detection -> Hindcast -> AIS Analysis sequentially in a single call, full pipeline
     """
     session = SessionLocal()
 
     try:
-        # ---------------------------------------------------------------------
-        # STAGE 1: SPILL DETECTION
-        # ---------------------------------------------------------------------
         detection_res = await run_spill_detection(
             image_timestamp=image_timestamp,
             satellite_image=satellite_image,
@@ -261,7 +234,7 @@ async def run_full_spill_pipeline(
             incident_code=f"INC-{detection_res.spill_id}",
             status=detection_res.status,
         )
-        session.merge(incident)  # Works because spill_id is primary key on Incident
+        session.merge(incident)
 
         save_or_update_module_result(
             session=session,
@@ -270,9 +243,6 @@ async def run_full_spill_pipeline(
             payload=detection_res.model_dump(mode="json"),
         )
 
-        # ---------------------------------------------------------------------
-        # STAGE 2: HINDCAST RUN
-        # ---------------------------------------------------------------------
         hindcast_input = HindcastInput(
             spill_id=detection_res.spill_id,
             observed_position=LatLon(
@@ -291,9 +261,6 @@ async def run_full_spill_pipeline(
             payload=hindcast_res.model_dump(mode="json"),
         )
 
-        # ---------------------------------------------------------------------
-        # STAGE 3: AIS FILTER & SCORE
-        # ---------------------------------------------------------------------
         ais_input = AISFilterInput(
             spill_id=detection_res.spill_id,
             origin_estimate=hindcast_res.origin_estimate,
@@ -325,9 +292,6 @@ async def run_full_spill_pipeline(
             payload=ais_combined_payload,
         )
 
-        # ---------------------------------------------------------------------
-        # COMMIT TRANSACTION & RETURN
-        # ---------------------------------------------------------------------
         session.commit()
 
         return {
@@ -412,7 +376,7 @@ def get_module_result(
     ),
 ):
     """
-    Generic fetcher to retrieve stored module payload(s) by spill_id and module_name.
+    generic data fetchh for all the pipelines
     """
     session = SessionLocal()
 
