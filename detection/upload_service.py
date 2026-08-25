@@ -22,18 +22,14 @@ async def save_uploaded_spill_files(
             mask_path
     """
 
-    # ============================================================
-    # 1. CREATE UPLOAD DIRECTORY
-    # ============================================================
+    # Create directory
 
     UPLOAD_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    # ============================================================
-    # 2. VALIDATE SATELLITE IMAGE
-    # ============================================================
+    # just validation
     
     if not satellite_image.filename:
         raise ValueError("Satellite image filename is missing")
@@ -52,9 +48,6 @@ async def save_uploaded_spill_files(
             )
         )
 
-    # ============================================================
-    # 3. VALIDATE SPILL MASK
-    # ============================================================
 
     if not spill_mask.filename.lower().endswith(
         (".tif", ".tiff")
@@ -67,9 +60,7 @@ async def save_uploaded_spill_files(
             )
         )
 
-    # ============================================================
-    # 4. GENERATE UNIQUE FILENAMES
-    # ============================================================
+    # file renaming
 
     image_name = Path(satellite_image.filename)
     mask_name = Path(spill_mask.filename)
@@ -90,9 +81,7 @@ async def save_uploaded_spill_files(
     image_path = UPLOAD_DIR / image_filename
     mask_path = UPLOAD_DIR / mask_filename
 
-    # ============================================================
-    # 5. SAVE SATELLITE IMAGE
-    # ============================================================
+    # save on disk
 
     try:
 
@@ -106,9 +95,6 @@ async def save_uploaded_spill_files(
                 buffer
             )
 
-        # ========================================================
-        # 6. SAVE SPILL MASK
-        # ========================================================
 
         with open(
             mask_path,
@@ -142,9 +128,7 @@ async def save_uploaded_spill_files(
         await satellite_image.close()
         await spill_mask.close()
 
-    # ============================================================
-    # 7. RETURN FILE PATHS
-    # ============================================================
+    # return
 
     return (
         str(image_path),

@@ -4,11 +4,7 @@ from pydantic import BaseModel, Field
 
 class SpillDetectionRequest(BaseModel):
     """
-    Request contract for oil-spill detection/characterization.
-
-    Required:
-    1. Sentinel-1 satellite image
-    2. Corresponding oil-spill mask
+    Request Schema for detection
     """
 
     image_path: str = Field(

@@ -25,27 +25,10 @@ def detect_spill(
         """
         Analyze a satellite image and its corresponding
         oil-spill mask.
-
-        Current prototype:
-
-            Sentinel-1 image
-                    +
-            Oil-spill mask
-                    ↓
-            Geometric characterization
-                    ↓
-            SpillDetectionResponse
-
-        The mask is currently assumed to be a valid
-        segmentation mask.
-
-        Later, an ML segmentation model can generate
-        the mask automatically.
+        Sentinal image - oil spill mask - geometric analysis - response
         """
 
-        # ============================================================
-        # 1. READ SATELLITE IMAGE METADATA
-        # ============================================================
+        # Read image
 
         with rasterio.open(request.image_path) as src:
 
@@ -59,17 +42,13 @@ def detect_spill(
 
             pixel_height = abs(transform.e)
 
-        # ============================================================
-        # 2. READ SPILL MASK
-        # ============================================================
+        # Read mask image
 
         with rasterio.open(request.mask_path) as src:
 
             mask = src.read(1)
 
-        # ============================================================
-        # 3. VALIDATE IMAGE/MASK DIMENSIONS
-        # ============================================================
+        #Read mask image
 
         if mask.shape != (height, width):
 
@@ -79,9 +58,7 @@ def detect_spill(
                 f"mask={mask.shape}"
             )
 
-        # ============================================================
-        # 4. CREATE BINARY SPILL MASK
-        # ============================================================
+        # Change it to binary or bool
 
         # 0  -> background
         # >0 -> oil spill
@@ -90,9 +67,7 @@ def detect_spill(
 
         spill_pixels = int(spill.sum())
 
-        # ============================================================
-        # 5. HANDLE NO-SPILL CASE
-        # ============================================================
+        # if not spill return
                 
         import uuid
 
@@ -118,17 +93,13 @@ def detect_spill(
                 ),
             )
 
-        # ============================================================
-        # 6. AREA
-        # ============================================================
+        # area
 
         pixel_area_m2 = pixel_width * pixel_height
 
         area_km2 = spill_pixels * pixel_area_m2 / 1_000_000
 
-        # ============================================================
-        # 7. GET SPILL PIXEL COORDINATES
-        # ============================================================
+        # pixel coordinates
 
         rows, cols = np.where(spill)
 
@@ -155,9 +126,7 @@ def detect_spill(
         xs = np.asarray(xs)
         ys = np.asarray(ys)
 
-        # ============================================================
-        # 8. CENTROID
-        # ============================================================
+        # centroid of overall spill
 
         centroid_x = float(np.mean(xs))
 
@@ -173,9 +142,7 @@ def detect_spill(
             latitude=round(float(lat[0]), 6), longitude=round(float(lon[0]), 6)
         )
 
-        # ============================================================
-        # 9. BOUNDING BOX
-        # ============================================================
+        # boundary box
 
         bbox_width_km = (max(xs) - min(xs)) / 1000
 
@@ -185,9 +152,7 @@ def detect_spill(
             width_km=round(bbox_width_km, 4), height_km=round(bbox_height_km, 4)
         )
 
-        # ============================================================
-        # 10. CONNECTED COMPONENTS
-        # ============================================================
+        # connected spill components
 
         label_result = ndimage.label(spill)
 
@@ -205,9 +170,7 @@ def detect_spill(
             count=int(component_count), largest_component_pixels=(largest_component)
         )
 
-        # ============================================================
-        # 11. APPROXIMATE PERIMETER
-        # ============================================================
+        # approx perimeter
 
         padded = np.pad(spill, 1, constant_values=False)
 
@@ -224,9 +187,7 @@ def detect_spill(
 
         perimeter_km = perimeter_m / 1000
 
-        # ============================================================
-        # 12. PCA SHAPE ANALYSIS
-        # ============================================================
+        # PCA here
 
         points = np.column_stack((xs, ys))
 
@@ -239,11 +200,8 @@ def detect_spill(
 
             eigenvalues = np.linalg.eigvalsh(covariance)
 
-            # Numerical safety:
             # covariance eigenvalues should not
-            # theoretically be negative, but floating
-            # point calculations can produce tiny
-            # negative values.
+            # theoretically be negative
 
             eigenvalues = np.maximum(eigenvalues, 0)
 
@@ -251,7 +209,7 @@ def detect_spill(
             eigenvalues = np.sort(eigenvalues)[::-1]
 
             # Approximate dimensions using
-            # ±2 standard deviations.
+            # ±2 standard deviations. also called the min and max in box plots
 
             major_axis_km = 4 * np.sqrt(eigenvalues[0]) / 1000
 
@@ -277,17 +235,14 @@ def detect_spill(
             eccentricity=round(float(eccentricity), 6),
         )
 
-        # ============================================================
-        # 13. BUILD RESPONSE
-        # ============================================================
+        # response
 
         response = SpillDetectionResponse(
             incident_id="",
             spill_id=spi,
             spill_detected=True,
             detection_timestamp=(request.image_timestamp),
-            # Current prototype receives a mask.
-            # It does not generate an ML confidence.
+            #no ml conf for now as no model is used yet
             confidence_score=None,
             spill_pixel_count=spill_pixels,
             area_km2=round(area_km2, 4),

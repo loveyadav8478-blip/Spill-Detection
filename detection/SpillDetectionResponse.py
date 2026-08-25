@@ -26,8 +26,7 @@ class Centroid(BaseModel):
 
 class BoundingBox(BaseModel):
     """
-    Approximate rectangular dimensions
-    containing the spill.
+    Approximate rectangular dimensions containing the spill.
     """
 
     width_km: float
@@ -62,8 +61,7 @@ class ConnectedComponents(BaseModel):
 
 class SpillDetectionResponse(BaseModel):
     """
-    Complete response returned by the
-    spill detection/characterization module.
+    Response model
     """
     incident_id: str
     spill_id: str
@@ -72,9 +70,7 @@ class SpillDetectionResponse(BaseModel):
 
     detection_timestamp: datetime
 
-    # None because the current prototype receives
-    # an already-created mask rather than generating
-    # the mask using an ML model.
+    # None bcz no ml yet.
     confidence_score: Optional[float] = Field(
         default=None,
         ge=0,
