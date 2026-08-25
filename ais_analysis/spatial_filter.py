@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+# Calculate distance between two geographic points in kilometers.
 
 def haversine_distance(
     lat1,
@@ -8,7 +9,6 @@ def haversine_distance(
     lat2,
     lon2
 ):
-    # Calculate distance between two geographic points in kilometers.
 
     R = 6371
 
@@ -34,6 +34,7 @@ def haversine_distance(
 
     return R * c
 
+# Calculate distance of AIS records from the spill and keep records inside the given radius.
 
 def filter_by_distance(
     df: pd.DataFrame,
@@ -41,8 +42,6 @@ def filter_by_distance(
     spill_lon: float,
     radius_km: float = 34
 ):
-
-    # Calculate distance of AIS records from the spill and keep records inside the given radius.
 
     df = df.copy()
 

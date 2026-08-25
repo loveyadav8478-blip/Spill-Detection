@@ -14,31 +14,14 @@ from .schema_adapter import (
 )
 
 
+#  Run the AIS vessel candidate detection pipeline.
+# (AIS Pings -> DataFrame -> Time Filter -> Spatial Filter -> Candidate Ranking -> Schema Output)
+
 def run_ais_pipeline(
     input_data: AISFilterInput, top_n: int = 4
 ) -> tuple[AISFilterOutput, AISScoreOutput]:
-    """
-    Run the AIS vessel candidate detection pipeline.
 
-    The original AIS logic is preserved:
-
-    AIS Pings
-        ↓
-    DataFrame
-        ↓
-    Time Filter
-        ↓
-    Spatial Filter
-        ↓
-    Candidate Ranking
-        ↓
-    Schema Output
-    """
-
-    # ------------------------------------------------
-    # 1. Convert AISPing schema objects into the same
-    #    DataFrame format expected by existing code.
-    # ------------------------------------------------
+    # Convert AISPing schema objects into the same DataFrame format
 
     df = load_ais_data("data/ais/ais_dataset.csv")
     input_data = normalize_input_to_dataset_bounds(input_data, df)
@@ -56,30 +39,21 @@ def run_ais_pipeline(
     # Ensure timestamp format is correct
     df["BaseDateTime"] = df["BaseDateTime"].astype("datetime64[ns]")
 
-    # ------------------------------------------------
-    # 2. Get spill location and time from Hindcast
-    # ------------------------------------------------
-
+    # Get spill location and time from Hindcast
     origin = input_data.origin_estimate
 
     spill_timestamp = origin.t
     spill_lat = origin.lat
     spill_lon = origin.lon
 
-    # ------------------------------------------------
-    # 3. Existing Time Filter Logic
-    # ------------------------------------------------
-
+    # Filtering on the basis of time
     duration_minutes = int(input_data.coarse_time_window_hours * 60)
 
     time_filtered = filter_by_time(
         df=df, spill_time=spill_timestamp, duration_minutes=duration_minutes
     )
 
-    # ------------------------------------------------
-    # 4. Existing Spatial Filter Logic
-    # ------------------------------------------------
-
+    # Spatial Filtering
     spatial_filtered = filter_by_distance(
         df=time_filtered,
         spill_lat=spill_lat,
@@ -87,16 +61,10 @@ def run_ais_pipeline(
         radius_km=input_data.coarse_radius_km,
     )
 
-    # ------------------------------------------------
-    # 5. Existing Candidate Ranking Logic
-    # ------------------------------------------------
-
+    # Candidate Ranking
     ranked_vessels = rank_candidate_vessels(df=spatial_filtered, top_n=top_n)
 
-    # ------------------------------------------------
-    # 6. Convert to schema outputs
-    # ------------------------------------------------
-
+    # Convert to schema outputs
     filter_output = build_filter_output(
         spill_id=input_data.spill_id,
         filtered_df=spatial_filtered,

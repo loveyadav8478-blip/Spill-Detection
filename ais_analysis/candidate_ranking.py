@@ -1,18 +1,15 @@
 import pandas as pd
 
+
+# Rank vessels based on -> Minimum distance to spill, Average distance to spill 
+# and Number of AIS records near the spill
+
+# Returns the top candidate vessels with confidence scores.
+
 def rank_candidate_vessels(
     df: pd.DataFrame,
     top_n: int = 4
 ):
-    """
-    Rank vessels based on:
-    - Minimum distance to spill
-    - Average distance to spill
-    - Number of AIS records near the spill
-
-    Returns the top candidate vessels
-    with confidence scores.
-    """
 
     # Handle empty DataFrame
     if df.empty:

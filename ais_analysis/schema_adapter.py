@@ -30,13 +30,9 @@ def _decimate(points: list, max_points: int) -> list:
     )
     return [points[i] for i in indices]
 
+# Convert schema AISPing objects into the same DataFrame format
 
 def ais_pings_to_dataframe(pings: list[AISPing]) -> pd.DataFrame:
-    """
-    Convert schema AISPing objects into the same
-    DataFrame format expected by the existing
-    AIS analysis logic.
-    """
 
     rows = []
 
@@ -87,7 +83,7 @@ def dataframe_to_filtered_vessels(df: pd.DataFrame) -> list[FilteredVessel]:
 
         trajectory_points = _decimate(
             trajectory_points, MAX_TRAJECTORY_POINTS
-        )  # ADD THIS LINE
+        )
 
         vessels.append(
             FilteredVessel(
@@ -100,12 +96,9 @@ def dataframe_to_filtered_vessels(df: pd.DataFrame) -> list[FilteredVessel]:
 
     return vessels
 
+# Extract vessel metadata from the existing filtered AIS DataFrame.
 
 def get_vessel_metadata(df: pd.DataFrame, mmsi: str) -> dict:
-    """
-    Extract vessel metadata from the existing
-    filtered AIS DataFrame.
-    """
 
     vessel_rows = df[df["MMSI"].astype(str) == str(mmsi)]
 
@@ -135,17 +128,12 @@ def get_vessel_metadata(df: pd.DataFrame, mmsi: str) -> dict:
     }
 
 
+# Convert the output of the existing candidate ranking logic into ScoredVessel.
+
 def ranked_dataframe_to_scored_vessels(
     ranked_df: pd.DataFrame, filtered_df: pd.DataFrame, origin_estimate: TimedPoint
 ) -> list[ScoredVessel]:
-    """
-    Convert the output of the existing
-    candidate_ranking.py logic into ScoredVessel.
-
-    Existing ranking logic is NOT changed.
-    The existing component scores are mapped
-    into the schema response.
-    """
+    
 
     scored_vessels = []
 
@@ -186,16 +174,12 @@ def ranked_dataframe_to_scored_vessels(
         else:
             time_delta_minutes = 0.0
 
-        # Compatibility mapping:
-        #
+        # Data mapping:
+
         # Existing AIS logic:
         # distance_score
         # presence_score
         # avg_distance_score
-        #
-        # These values are exposed through the
-        # new schema without changing the
-        # original ranking algorithm.
 
         anomaly = AnomalyFlags(
             ais_gap_detected=False,
@@ -259,7 +243,7 @@ def build_filter_output(
 
     return AISFilterOutput(
         spill_id=spill_id,
-        candidate_vessels=candidate_vessels,  # no more [:4] slice needed - already exactly the ranked set
+        candidate_vessels=candidate_vessels,
     )
 
 

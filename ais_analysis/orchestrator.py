@@ -7,15 +7,13 @@ from ais_analysis.pipeline import (
     run_ais_pipeline
 )
 
+# Connect Hindcast output with AIS analysis.
 
 def run_ais_after_hindcast(
     detection_output,
     hindcast_output,
     raw_ais_pings
 ):
-    """
-    Connect Hindcast output with AIS analysis.
-    """
 
     ais_input = AISFilterInput(
         spill_id=hindcast_output.spill_id,
