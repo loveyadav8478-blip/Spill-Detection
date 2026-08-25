@@ -263,8 +263,15 @@ async def run_full_spill_pipeline(
 
         ais_input = AISFilterInput(
             spill_id=detection_res.spill_id,
-            origin_estimate=hindcast_res.origin_estimate,
-            backward_path=hindcast_res.backward_path,
+            origin_estimate=(
+                hindcast_res.origin_estimate.model_dump()
+                if hasattr(hindcast_res.origin_estimate, "model_dump")
+                else hindcast_res.origin_estimate
+            ),
+            backward_path=[
+                pt.model_dump() if hasattr(pt, "model_dump") else pt
+                for pt in hindcast_res.backward_path
+            ],
             coarse_radius_km=coarse_radius_km,
             coarse_time_window_hours=coarse_time_window_hours,
             trajectory_max_distance_km=trajectory_max_distance_km,
