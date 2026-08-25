@@ -25,12 +25,7 @@ async def run_spill_detection(
     spill_mask: UploadFile,
 ):
     """
-    Complete spill detection workflow.
-
-    1. Save uploaded files
-    2. Create SpillDetectionRequest
-    3. Run spill characterization
-    4. Return detection result
+    For running the detection workflow from main
     """
 
     # Save uploaded files
