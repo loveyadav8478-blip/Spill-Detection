@@ -20,6 +20,7 @@ from alchemy import Incident, ModuleResult, Base
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, Form, File, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from shapely.geometry import Point, LineString
 from detection.detection_service import run_spill_detection
@@ -47,6 +48,19 @@ from data.schemas import (
 app = FastAPI(title="Oil Spill Detection & Attribution API")
 
 EARTH_RADIUS_KM = 6371.0
+
+origins = [
+    "http://localhost:5500",
+    "http://127.0.0.1:5500",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"],  # Allows all headers (e.g., Content-Type, Authorization)
+)
 
 
 @app.on_event("startup")
@@ -148,9 +162,9 @@ async def run_hindcast_service(payload: HindcastInput):
             session=session,
             spill_id=payload.spill_id,
             module_name="hindcast",
-            payload=response.model_dump(mode="json")
+            payload=response.model_dump(mode="json"),
         )
-        
+
         session.commit()
         return response
 
@@ -319,7 +333,7 @@ async def run_full_spill_pipeline(
         )
 
     finally:
-        session.close()        
+        session.close()
 
 
 @app.get("/spill-data/prerequisites/{spill_id}")
@@ -327,29 +341,37 @@ def get_prerequisite_data(
     spill_id: str,
     target_module: str = Query(..., description="Target module ('hindcast' or 'ais')"),
 ):
-    dependency_map = {"hindcast": "detection", "ais": "hindcast", "detection": "detection"}
+    dependency_map = {
+        "hindcast": "detection",
+        "ais": "hindcast",
+        "detection": "detection",
+    }
 
     target_module = target_module.lower()
     if target_module not in dependency_map:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid target_module '{target_module}'. Allowed values: {list(dependency_map.keys())}"
+            detail=f"Invalid target_module '{target_module}'. Allowed values: {list(dependency_map.keys())}",
         )
 
     required_module_name = dependency_map[target_module]
     session = SessionLocal()
 
     try:
-        record = session.query(ModuleResult).filter(
-            ModuleResult.spill_id == spill_id,
-            ModuleResult.module_name == required_module_name,
-        ).first()
+        record = (
+            session.query(ModuleResult)
+            .filter(
+                ModuleResult.spill_id == spill_id,
+                ModuleResult.module_name == required_module_name,
+            )
+            .first()
+        )
 
         if not record:
             # Custom 404 message
             raise HTTPException(
                 status_code=404,
-                detail=f"Prerequisite step '{required_module_name}' has not been run for spill '{spill_id}'."
+                detail=f"Prerequisite step '{required_module_name}' has not been run for spill '{spill_id}'.",
             )
 
         return {
@@ -367,7 +389,7 @@ def get_prerequisite_data(
         # Custom 500 message for actual database crashes or unexpected errors
         raise HTTPException(
             status_code=500,
-            detail=f"Database query failed while fetching prerequisites: {str(e)}"
+            detail=f"Database query failed while fetching prerequisites: {str(e)}",
         )
 
     finally:
