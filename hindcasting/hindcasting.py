@@ -6,28 +6,11 @@ TODO 2. propagation of weather data as per the walk path stpes time period
 
 """
 Hindcasting / drift module.
+owns the cached data form live apis
 
-Owns everything the PS does NOT provide for this stage: fetching
-environmental data (current + wind) and running the vector-based
-backward/forward drift simulation. Detection stays completely free of
-this - it only ever hands over spill_id + observed_position +
-observation_time (see HindcastInput in schema.py).
-
-Flow (locked):
-  1. Ingest HindcastInput from detection
-  2. Fetch env factors (current, wind) - internal to this module
-  3. Load model_params - fixed constants, not calculated per-request
-  4. Run vector algorithm (backward AND forward)
-  5. Return HindcastOutput
-
-No ML here - this is deterministic vector physics (great-circle
-destination point + windage-weighted drift), the same class of
-approach real tools like NOAA GNOME use, just simplified:
-  - one representative current/wind vector for the whole window,
-    not a spatially-varying field
-  - one deterministic path, not a Monte Carlo ensemble
-Both simplifications are stated explicitly in the output via
-`is_simplified_model` / `model_notes`.
+Flow
+Ingest - vectorize - transform in spherical maths - 
+pure maths here
 """
 
 

@@ -1,32 +1,19 @@
 """
-Seed exactly N (default 14) hindcast environmental data records from two
-raw Open-Meteo API response dumps (wind forecast + marine/ocean current).
-
-This does NOT call any API - it reads two already-saved JSON responses
-(save the raw output of both endpoints to disk once, point the paths
-below at them) and picks N evenly-spaced, time-aligned samples from
-their hourly arrays, mapping 1:1 onto your downloaded images.
-
-Units: both wind_speed_10m and ocean_current_velocity come back from
-Open-Meteo already in km/h (confirmed via each response's own
-hourly_units block) - matches this project's EnvironmentVector schema
-directly, no conversion needed.
-
-Run:  python seeding_hindcast_data.py
+sedd data here
 """
 
 from __future__ import annotations
 
 import json
 
-# --- Set these paths to your two saved API response files -------------
+#set paths
 
 WIND_RESPONSE_PATH = "hindcasting/wind_raw.json"
 CURRENT_RESPONSE_PATH = "hindcasting/current_raw.json"
 OUTPUT_PATH = "hindcasting/hindcast_data.json"
 
-NUM_RECORDS = 14  # match this to your actual downloaded image count
-SOURCE_LABEL = "cached_live_sample"  # real values, fetched once, replayed
+NUM_RECORDS = 14
+SOURCE_LABEL = "cached_live_sample"
 
 
 def _load(path: str) -> dict:
@@ -35,9 +22,7 @@ def _load(path: str) -> dict:
 
 
 def _evenly_spaced_indices(length: int, count: int) -> list[int]:
-    """Pick `count` indices spread evenly across range(length), so the
-    14 records aren't just the first 14 consecutive (very similar)
-    hours - spreads them across the full available time span instead."""
+    """picke on even points not one sided"""
     if count >= length:
         return list(range(length))
     step = (length - 1) / (count - 1)
@@ -80,9 +65,6 @@ def build_seed_records(
                     f"API response, it may be truncated."
                 )
 
-    # Align by matching timestamp strings rather than assuming both
-    # arrays are the same length/order - defensive, since the two
-    # endpoints were queried separately and could drift.
     current_by_time = {
         t: i for i, t in enumerate(current_times)
     }
@@ -97,8 +79,6 @@ def build_seed_records(
 
     indices = _evenly_spaced_indices(len(common_times), num_records)
 
-    # single representative point for the region - average of the two
-    # query coordinates, since they were fetched a few hundred meters apart
     rep_lat = round((wind["latitude"] + current["latitude"]) / 2, 4)
     rep_lon = round((wind["longitude"] + current["longitude"]) / 2, 4)
 
