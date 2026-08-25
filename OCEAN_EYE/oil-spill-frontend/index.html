@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCEAN EYE | Leveraging Satellite Imagery to Attribute Oil Spills</title>
+    <!-- Leaflet Map CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Google Fonts: Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="light-theme">
+
+    <!-- Sticky Navigation Header -->
+    <header class="navbar">
+        <div class="nav-brand" id="scroll-to-top">
+            <div class="brand-text">
+                <h1>OCEAN EYE</h1>
+                <span class="brand-subtitle">SAR Oil Spill Intelligence</span>
+            </div>
+        </div>
+        
+        <nav class="nav-links">
+            <a href="#section-overview" class="nav-link active">Overview & Upload</a>
+            <a href="#section-detect" class="nav-link">Detect</a>
+            <a href="#section-drift" class="nav-link">Drift Hindcasting</a>
+            <a href="#section-filtering" class="nav-link">AIS Filtering</a>
+            <a href="#section-scoring" class="nav-link">AIS Scoring</a>
+            <a href="#section-attributed" class="nav-link">Attributed</a>
+            <a href="#section-command" class="nav-link">Command Centre</a>
+        </nav>
+
+        <div class="nav-status">
+            <div class="status-indicator">
+                <span class="status-dot green" id="api-status-dot"></span>
+                <span class="status-label" id="api-status-text">API Connected</span>
+            </div>
+            <div class="mode-toggle">
+                <label class="switch-container">
+                    <span class="switch-label">Offline Simulation</span>
+                    <input type="checkbox" id="mock-mode-checkbox" checked>
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <!-- Editorial Hero Header Area -->
+    <section class="editorial-hero">
+        <div class="editorial-container">
+            <div class="editorial-meta">
+                <span class="meta-date">27 APRIL 2023 | DATA</span>
+                <span class="meta-read">4 MIN READ</span>
+            </div>
+            
+            <h2 class="editorial-title">
+                Leveraging satellite imagery to determine Oil spills at sea along with AIS data correlations to identify vessel responsible for the spill.
+            </h2>
+
+            <div class="editorial-author-row">
+                <div class="author-left">
+                    <div class="author-avatar">
+                        <!-- Simulated author image matching screenshot -->
+                        <div class="avatar-placeholder">NG</div>
+                    </div>
+                    <div class="author-info">
+                        <span class="author-name">Natalia Gómez</span>
+                        <a href="https://linkedin.com" target="_blank" class="linkedin-btn">LinkedIn</a>
+                    </div>
+                </div>
+                <div class="author-right">
+                    <span class="author-role">Marketing Director, OCEAN EYE</span>
+                </div>
+            </div>
+
+            <!-- Big hero visual below heading -->
+            <div class="editorial-hero-image">
+            </div>
+        </div>
+    </section>
+
+    <!-- Unified Long-Scrolling Workspaces -->
+    <main class="scrolling-main">
+        
+        <!-- SECTION 1: Overview & Ingestion -->
+        <section id="section-overview" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">01</span>
+                <h3>Overview & Ingestion Panel</h3>
+            </div>
+            
+            <div class="overview-grid">
+                <!-- Input Panel -->
+                <div class="glass-card upload-panel">
+                    <div class="card-header">
+                        <i data-lucide="upload-cloud" class="header-icon"></i>
+                        <h2>Ingestion & Pipeline Trigger</h2>
+                    </div>
+                    
+                    <form id="pipeline-form" class="pipeline-form">
+                        <div class="form-group-row">
+                            <!-- Image 1: Raw SAR -->
+                            <div class="file-upload-box">
+                                <label class="file-label">
+                                    <span class="label-title">Satellite Image (Raw SAR)</span>
+                                    <div class="upload-area" id="sar-upload-area">
+                                        <i data-lucide="image" class="upload-icon"></i>
+                                        <p>Drag & drop raw SAR image or click to browse</p>
+                                        <span class="file-name-display" id="sar-file-name">No file selected</span>
+                                        <input type="file" id="satellite_image" accept="image/*,.tif,.tiff" required class="hidden-input">
+                                    </div>
+                                </label>
+                            </div>
+                            
+                            <!-- Image 2: Spill Mask -->
+                            <div class="file-upload-box">
+                                <label class="file-label">
+                                    <span class="label-title">Spill Mask Image</span>
+                                    <div class="upload-area" id="mask-upload-area">
+                                        <i data-lucide="binary" class="upload-icon"></i>
+                                        <p>Drag & drop binary mask or click to browse</p>
+                                        <span class="file-name-display" id="mask-file-name">No file selected</span>
+                                        <input type="file" id="spill_mask" accept="image/*,.tif,.tiff" required class="hidden-input">
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="image_timestamp">Observation Time (UTC)</label>
+                            <div class="input-with-icon">
+                                <i data-lucide="calendar"></i>
+                                <input type="datetime-local" id="image_timestamp" required>
+                            </div>
+                        </div>
+
+                        <div class="accordion-section">
+                            <div class="accordion-header" id="accordion-toggle">
+                                <div class="accordion-title-wrapper">
+                                    <i data-lucide="settings"></i>
+                                    <span>Advanced Pipeline Parameters</span>
+                                </div>
+                                <i data-lucide="chevron-down" class="chevron" id="accordion-chevron"></i>
+                            </div>
+                            <div class="accordion-content hidden" id="accordion-content">
+                                <div class="params-grid">
+                                    <div class="form-group">
+                                        <label for="coarse_radius_km">Search Radius (km)</label>
+                                        <input type="number" id="coarse_radius_km" value="50.0" step="0.5" min="10" max="200">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="coarse_time_window_hours">Time Window (hours)</label>
+                                        <input type="number" id="coarse_time_window_hours" value="6.0" step="0.5" min="1" max="48">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="trajectory_max_distance_km">Max Drift Deviation (km)</label>
+                                        <input type="number" id="trajectory_max_distance_km" value="5.0" step="0.1" min="1" max="20">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="textarea-header">
+                                <label for="raw_ais_pings_json">Ingested AIS Vessel Pings (JSON)</label>
+                                <button type="button" class="btn-secondary btn-xs" id="load-sample-ais">
+                                    <i data-lucide="database"></i> Load Sample Pings
+                                </button>
+                            </div>
+                            <textarea id="raw_ais_pings_json" rows="6" placeholder="Paste raw AIS points as a JSON list..." required></textarea>
+                        </div>
+
+                        <!-- AIS Pings Live Table View -->
+                        <div class="form-group" id="ais-pings-table-container">
+                            <label>Parsed AIS Pings Preview Table</label>
+                            <div class="ais-table-scroll-wrapper">
+                                <table class="clean-table" id="ais-pings-input-table">
+                                    <thead>
+                                        <tr>
+                                            <th>MMSI</th>
+                                            <th>Vessel Name</th>
+                                            <th>Time (UTC)</th>
+                                            <th>Lat, Lon</th>
+                                            <th>SOG (kn)</th>
+                                            <th>COG (°)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="ais-pings-input-tbody">
+                                        <tr>
+                                            <td colspan="6" class="empty-table-cell">No AIS data parsed yet. Load sample pings or paste JSON above.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-primary btn-block" id="btn-submit-pipeline">
+                            <i data-lucide="play-circle" id="submit-icon"></i>
+                            <span id="submit-text">Execute Attribution Pipeline</span>
+                            <div class="spinner hidden" id="submit-spinner"></div>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Info summary -->
+                <div class="glass-card instructions-panel">
+                    <div class="card-header">
+                        <i data-lucide="info" class="header-icon"></i>
+                        <h2>Attribution Engine Mechanics</h2>
+                    </div>
+                    <div class="instructions-content">
+                        <p>This operations deck executes a modular monolith oil spill pipeline. Uploading the satellite imagery and mask maps triggers coordinate calculations, which are cross-referenced with vessel tracks to attribute liability.</p>
+                        <div class="instruction-step-card">
+                            <h4><span class="step-num-badge">1</span> SAR Imagery & Spill Mask</h4>
+                            <p>Ingests a georeferenced synthetic aperture radar (SAR) file and its spill segmentation mask to isolate pixel count, perimeter, area size, and PCA shape eccentricity.</p>
+                        </div>
+                        <div class="instruction-step-card">
+                            <h4><span class="step-num-badge">2</span> Drift Hindcast Trajectory</h4>
+                            <p>Uses localized windage coefficients, current vectors, and weather APIs to compute the historical backward drift path to determine the location and time window of origin.</p>
+                        </div>
+                        <div class="instruction-step-card">
+                            <h4><span class="step-num-badge">3</span> AIS Tracking Correlations</h4>
+                            <p>Filters nearby vessel transponders and calculates matching scores (proximity, heading course anomaly, speed deviation, transponder blackout gaps) to rank suspects.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 2: Detect (Visualization Feed Previews) -->
+        <section id="section-detect" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">02</span>
+                <h3>SAR & Mask Detection Visualizer</h3>
+            </div>
+            
+            <div class="glass-card preview-panel">
+                <div class="card-header">
+                    <i data-lucide="eye" class="header-icon"></i>
+                    <h2>Visualization Feed Preview</h2>
+                </div>
+                
+                <div class="previews-container large-previews">
+                    <div class="preview-box">
+                        <span class="preview-tag">SAR Channel</span>
+                        <div class="preview-placeholder" id="sar-preview-placeholder">
+                            <i data-lucide="radio" class="placeholder-icon"></i>
+                            <span>Awaiting Ingestion</span>
+                        </div>
+                        <!-- TIFF display wrapper -->
+                        <div class="tiff-display-container hidden" id="sar-tiff-display">
+                            <!-- Populated in JS if TIFF is uploaded -->
+                        </div>
+                        <img id="sar-preview-img" class="hidden-preview-img" src="" alt="SAR Image Preview">
+                    </div>
+                    
+                    <div class="preview-box">
+                        <span class="preview-tag">Mask Channel</span>
+                        <div class="preview-placeholder" id="mask-preview-placeholder">
+                            <i data-lucide="scan" class="placeholder-icon"></i>
+                            <span>Awaiting Ingestion</span>
+                        </div>
+                        <!-- TIFF display wrapper -->
+                        <div class="tiff-display-container hidden" id="mask-tiff-display">
+                            <!-- Populated in JS if TIFF is uploaded -->
+                        </div>
+                        <img id="mask-preview-img" class="hidden-preview-img" src="" alt="Spill Mask Preview">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: Drift Hindcasting -->
+        <section id="section-drift" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">03</span>
+                <h3>Environmental Drift Hindcasting</h3>
+            </div>
+            
+            <div class="drift-grid">
+                <div class="glass-card drift-metrics-panel">
+                    <div class="card-header">
+                        <i data-lucide="wind" class="header-icon"></i>
+                        <h2>Drift Model Settings & Forces</h2>
+                    </div>
+                    <div class="drift-metrics-content">
+                        <div class="vector-force-card">
+                            <div class="force-title">Wind Vector force</div>
+                            <div class="force-details">
+                                <span class="force-val" id="drift-wind-speed">0.0 km/h</span>
+                                <span class="force-lbl" id="drift-wind-dir">Direction: 0°</span>
+                            </div>
+                            <div class="force-source" id="drift-wind-source">Source: -</div>
+                        </div>
+                        <div class="vector-force-card">
+                            <div class="force-title">Current Vector force</div>
+                            <div class="force-details">
+                                <span class="force-val" id="drift-current-speed">0.0 km/h</span>
+                                <span class="force-lbl" id="drift-current-dir">Direction: 0°</span>
+                            </div>
+                            <div class="force-source" id="drift-current-source">Source: -</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card model-params-card">
+                    <div class="card-header">
+                        <i data-lucide="sliders" class="header-icon"></i>
+                        <h2>Equation Constants</h2>
+                    </div>
+                    <div class="constants-content">
+                        <div class="constant-row">
+                            <span class="lbl">Windage Coefficient</span>
+                            <span class="val" id="drift-windage-coeff">0.03 (3%)</span>
+                        </div>
+                        <div class="constant-row">
+                            <span class="lbl">Drift Timestep</span>
+                            <span class="val" id="drift-timestep">30 Minutes</span>
+                        </div>
+                        <div class="constant-row">
+                            <span class="lbl">Lookback Window</span>
+                            <span class="val" id="drift-lookback">12 Hours</span>
+                        </div>
+                        <div class="constant-row">
+                            <span class="lbl">Lookahead Forecast</span>
+                            <span class="val" id="drift-lookahead">12 Hours</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: AIS Filtering -->
+        <section id="section-filtering" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">04</span>
+                <h3>AIS Candidate Filtering</h3>
+            </div>
+            
+            <div class="glass-card filter-results-card">
+                <div class="card-header">
+                    <i data-lucide="filter" class="header-icon"></i>
+                    <h2>Filtered Candidate Vessels</h2>
+                </div>
+                <div class="filter-table-wrapper">
+                    <table class="clean-table" id="filter-results-table">
+                        <thead>
+                            <tr>
+                                <th>MMSI</th>
+                                <th>Status</th>
+                                <th>Reason / Filter Threshold</th>
+                            </tr>
+                        </thead>
+                        <tbody id="filter-results-tbody">
+                            <tr>
+                                <td colspan="3" class="empty-table-cell">No active pipeline tracking data. Trigger the pipeline above.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 5: AIS Scoring -->
+        <section id="section-scoring" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">05</span>
+                <h3>AIS Suspect Vessel Scoring</h3>
+            </div>
+            
+            <div class="scoring-container-grid">
+                <div class="glass-card scoring-weights-card">
+                    <div class="card-header">
+                        <i data-lucide="scale" class="header-icon"></i>
+                        <h2>Scoring Weight Balancing</h2>
+                    </div>
+                    <div class="weights-content">
+                        <div class="weight-row">
+                            <span class="lbl">Proximity Match</span>
+                            <span class="val">40% weight</span>
+                        </div>
+                        <div class="weight-row">
+                            <span class="lbl">Temporal Alignment</span>
+                            <span class="val">15% weight</span>
+                        </div>
+                        <div class="weight-row">
+                            <span class="lbl">Trajectory Intersect</span>
+                            <span class="val">15% weight</span>
+                        </div>
+                        <div class="weight-row">
+                            <span class="lbl">Behavioral Anomalies</span>
+                            <span class="val">30% weight</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card suspects-summary-card">
+                    <div class="card-header">
+                        <i data-lucide="users" class="header-icon"></i>
+                        <h2>Attribution Candidate Metrics</h2>
+                    </div>
+                    <div class="suspects-metrics-list" id="suspects-metrics-container">
+                        <div class="vessel-item-placeholder">
+                            <i data-lucide="info"></i>
+                            <p>Run the pipeline to output candidate statistics.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 6: Attributed -->
+        <section id="section-attributed" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">06</span>
+                <h3>Attributed Liability & Incident File</h3>
+            </div>
+            
+            <div class="attribution-grid">
+                <div class="glass-card primary-suspect-card">
+                    <div class="card-header">
+                        <i data-lucide="alert-triangle" class="header-icon" style="color: var(--accent-red)"></i>
+                        <h2>Primary Accused Vessel File</h2>
+                    </div>
+                    <div class="suspect-file-content" id="primary-suspect-file">
+                        <div class="vessel-item-placeholder">
+                            <i data-lucide="anchor"></i>
+                            <p>No vessel currently attributed. Execute the pipeline.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card incident-record-card">
+                    <div class="card-header">
+                        <i data-lucide="file-text" class="header-icon"></i>
+                        <h2>Incident Database Record</h2>
+                    </div>
+                    <div class="incident-record-content" id="incident-record-file">
+                        <div class="vessel-item-placeholder">
+                            <i data-lucide="database"></i>
+                            <p>No active database transaction record.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 7: Command Centre Dashboard -->
+        <section id="section-command" class="workspace-section">
+            <div class="section-title-bar">
+                <span class="section-number">07</span>
+                <h3>Interactive Geospatial Command Centre</h3>
+            </div>
+            
+            <div class="command-grid">
+                <!-- Left Sidebar: Incidents -->
+                <aside class="incidents-sidebar glass-card">
+                    <div class="sidebar-header">
+                        <i data-lucide="list-filter"></i>
+                        <h3>Active Incidents</h3>
+                    </div>
+                    <div class="incidents-list" id="incidents-list-container">
+                        <div class="incident-item-placeholder">
+                            <i data-lucide="alert-triangle"></i>
+                            <p>No incidents active. Trigger the pipeline from the Ingestion section.</p>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Center Panel: Map & Stepper -->
+                <div class="map-center-panel">
+                    <!-- Stepper -->
+                    <div class="pipeline-stepper glass-card">
+                        <div class="step" id="step-detected">
+                            <div class="step-icon"><i data-lucide="radar"></i></div>
+                            <div class="step-label">Detected</div>
+                        </div>
+                        <div class="step-line" id="line-1"></div>
+                        <div class="step" id="step-hindcasting">
+                            <div class="step-icon"><i data-lucide="wind"></i></div>
+                            <div class="step-label">Drift Hindcasting</div>
+                        </div>
+                        <div class="step-line" id="line-2"></div>
+                        <div class="step" id="step-filtering">
+                            <div class="step-icon"><i data-lucide="filter"></i></div>
+                            <div class="step-label">AIS Filtering</div>
+                        </div>
+                        <div class="step-line" id="line-3"></div>
+                        <div class="step" id="step-scoring">
+                            <div class="step-icon"><i data-lucide="award"></i></div>
+                            <div class="step-label">AIS Scoring</div>
+                        </div>
+                        <div class="step-line" id="line-4"></div>
+                        <div class="step" id="step-attributed">
+                            <div class="step-icon"><i data-lucide="anchor"></i></div>
+                            <div class="step-label">Attributed</div>
+                        </div>
+                    </div>
+
+                    <!-- Map Container -->
+                    <div class="map-container glass-card">
+                        <div id="map"></div>
+                        
+                        <!-- Map Legend -->
+                        <div class="map-legend">
+                            <div class="legend-title">Geospatial Overlay</div>
+                            <div class="legend-item"><span class="legend-color spill"></span> Detected Spill (Mask Centroid)</div>
+                            <div class="legend-item"><span class="legend-color drift-back"></span> Hindcast (Drift Backward)</div>
+                            <div class="legend-item"><span class="legend-color drift-forward"></span> Forecast (Drift Forward)</div>
+                            <div class="legend-item"><span class="legend-color vessel"></span> Suspect Vessels (AIS Pings)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Sidebar: Metrics -->
+                <div class="attribution-sidebar">
+                    <div class="glass-card metric-card">
+                        <div class="card-header">
+                            <i data-lucide="activity"></i>
+                            <h2>Spill Geometry</h2>
+                        </div>
+                        <div class="metrics-grid">
+                            <div class="metric-box">
+                                <span class="metric-val" id="val-area">0.0</span>
+                                <span class="metric-lbl">Area (km²)</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-val" id="val-perimeter">0.0</span>
+                                <span class="metric-lbl">Perimeter (km)</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-val" id="val-pixels">0</span>
+                                <span class="metric-lbl">Pixel Count</span>
+                            </div>
+                            <div class="metric-box">
+                                <span class="metric-val" id="val-eccentricity">0.00</span>
+                                <span class="metric-lbl">Eccentricity</span>
+                            </div>
+                        </div>
+                        <div class="additional-metrics-list">
+                            <div class="add-metric-item">
+                                <span class="lbl">Centroid</span>
+                                <span class="val" id="val-centroid">N/A</span>
+                            </div>
+                            <div class="add-metric-item">
+                                <span class="lbl">Confidence Score</span>
+                                <span class="val" id="val-confidence">N/A</span>
+                            </div>
+                            <div class="add-metric-item">
+                                <span class="lbl">Connected Regions</span>
+                                <span class="val" id="val-components">0</span>
+                            </div>
+                            <div class="add-metric-item">
+                                <span class="lbl">Model Type</span>
+                                <span class="val" id="val-model-notes">Deterministic</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card vessels-card">
+                        <div class="card-header">
+                            <i data-lucide="anchor"></i>
+                            <h2>Vessel Attribution Rank</h2>
+                        </div>
+                        <div class="vessels-list" id="vessels-list-container">
+                            <div class="vessel-item-placeholder">
+                                <i data-lucide="info"></i>
+                                <p>Select or run an incident to show ranked vessels.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Overlay Vessel Detail Modal -->
+    <div class="modal hidden" id="vessel-detail-modal">
+        <div class="modal-backdrop" id="modal-backdrop-el"></div>
+        <div class="modal-content glass-card">
+            <button class="modal-close" id="btn-close-modal"><i data-lucide="x"></i></button>
+            <div class="modal-header">
+                <i data-lucide="ship" class="modal-icon"></i>
+                <div class="modal-titles">
+                    <h3 id="modal-vessel-name">MV OCEAN STAR</h3>
+                    <span id="modal-vessel-mmsi">MMSI: 235085200</span>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="modal-meta-grid">
+                    <div class="meta-item"><span class="meta-label">IMO</span><span class="meta-val" id="modal-imo">-</span></div>
+                    <div class="meta-item"><span class="meta-label">Call Sign</span><span class="meta-val" id="modal-callsign">-</span></div>
+                    <div class="meta-item"><span class="meta-label">Type Code</span><span class="meta-val" id="modal-type">-</span></div>
+                    <div class="meta-item"><span class="meta-label">Dimensions</span><span class="meta-val" id="modal-dim">-</span></div>
+                </div>
+
+                <div class="scores-section">
+                    <h4>Pipeline Component Scores</h4>
+                    <div class="scores-bar-container">
+                        <div class="score-bar-row">
+                            <span class="score-lbl">Proximity Match</span>
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar-fill" id="bar-proximity" style="width: 0%"></div>
+                            </div>
+                            <span class="score-num" id="lbl-proximity">0%</span>
+                        </div>
+                        <div class="score-bar-row">
+                            <span class="score-lbl">Temporal Alignment</span>
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar-fill" id="bar-temporal" style="width: 0%"></div>
+                            </div>
+                            <span class="score-num" id="lbl-temporal">0%</span>
+                        </div>
+                        <div class="score-bar-row">
+                            <span class="score-lbl">Trajectory Intersect</span>
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar-fill" id="bar-trajectory" style="width: 0%"></div>
+                            </div>
+                            <span class="score-num" id="lbl-trajectory">0%</span>
+                        </div>
+                        <div class="score-bar-row">
+                            <span class="score-lbl">Behavior Anomaly</span>
+                            <div class="progress-bar-wrapper">
+                                <div class="progress-bar-fill" id="bar-behavior" style="width: 0%"></div>
+                            </div>
+                            <span class="score-num" id="lbl-behavior">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="anomalies-section">
+                    <h4>Detected Behavior Anomalies</h4>
+                    <ul class="anomalies-list" id="modal-anomalies-list"></ul>
+                </div>
+
+                <div class="explanations-section">
+                    <h4>Evidence Details & Explanation</h4>
+                    <ul class="explanations-list" id="modal-explanations-list"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet Map JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- App Logic -->
+    <script src="app.js"></script>
+    <script>
+        // Init Lucide Icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>
