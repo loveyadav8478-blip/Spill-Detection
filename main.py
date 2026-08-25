@@ -22,21 +22,21 @@ from PIL import Image
 from shapely.geometry import Point, LineString
 from detection.detection_service import run_spill_detection
 from detection.SpillDetectionResponse import SpillDetectionResponse
-<<<<<<< HEAD
-from hindcasting.hindcast_service import run_hindcast
-=======
-from ais_analysis.pipeline import run_ais_pipeline
+# <<<<<<< HEAD
+# from hindcasting.hindcast_service import run_hindcast
+# =======
+# from ais_analysis.pipeline import run_ais_pipeline
 
-from fastapi import FastAPI, HTTPException
+# from fastapi import FastAPI, HTTPException
 
-from data.schemas import (
-    AISFilterInput,
-    AISFilterOutput,
-    AISScoreOutput
-)
+# from data.schemas import (
+#     AISFilterInput,
+#     AISFilterOutput,
+#     AISScoreOutput
+# )
 
-from ais_analysis.pipeline import run_ais_pipeline
->>>>>>> main
+# from ais_analysis.pipeline import run_ais_pipeline
+# >>>>>>> main
 
 from data.schemas import (
     DetectionOutput,
