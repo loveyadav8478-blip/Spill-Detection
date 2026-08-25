@@ -8,10 +8,7 @@ def haversine_distance(
     lat2,
     lon2
 ):
-    """
-    Calculate distance between two geographic points
-    in kilometers.
-    """
+    # Calculate distance between two geographic points in kilometers.
 
     R = 6371
 
@@ -44,10 +41,8 @@ def filter_by_distance(
     spill_lon: float,
     radius_km: float = 34
 ):
-    """
-    Calculate distance of AIS records from the spill
-    and keep records inside the given radius.
-    """
+
+    # Calculate distance of AIS records from the spill and keep records inside the given radius.
 
     df = df.copy()
 
